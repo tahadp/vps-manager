@@ -221,6 +221,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
               </button>
             </div>
           </form>
+          )}
         </motion.div>
       </div>
     </AnimatePresence>
