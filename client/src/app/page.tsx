@@ -1,6 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
-import io from "socket.io-client";
+import { useState, useEffect, useRef } from "react";
+import io, { Socket } from "socket.io-client";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 
@@ -8,9 +8,13 @@ export default function Dashboard() {
   const router = useRouter();
   const [vpsList, setVpsList] = useState<any[]>([]);
   const [metricsMap, setMetricsMap] = useState<Record<string, any>>({});
+  const [screenshots, setScreenshots] = useState<Record<string, string>>({});
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const { theme, setTheme } = useTheme();
+  
+  // Bulk Selection
+  const [selectedVps, setSelectedVps] = useState<string[]>([]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -43,12 +47,43 @@ export default function Dashboard() {
           setMetricsMap(prev => ({ ...prev, [update.vpsId]: update }));
         });
 
+        socket.on('screenshot_update', (update) => {
+          setScreenshots(prev => ({ ...prev, [update.vpsId]: update.imageData }));
+        });
+
         return () => socket.disconnect();
       })
       .catch(() => {
         setLoading(false);
       });
   }, [router]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedVps(prev => prev.includes(id) ? prev.filter(vId => vId !== id) : [...prev, id]);
+  };
+
+  const executeCommand = async (vpsId: string, command: string) => {
+    if (!confirm(`Execute '${command}' on server?`)) return;
+    const token = localStorage.getItem("token");
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${vpsId}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ command })
+    });
+    alert("Command sent");
+  };
+
+  const executeBulkCommand = async (command: string) => {
+    if (selectedVps.length === 0) return alert("Select at least one VPS");
+    if (!confirm(`Execute '${command}' on ${selectedVps.length} server(s)?`)) return;
+    const token = localStorage.getItem("token");
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/bulk/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ vpsIds: selectedVps, command })
+    });
+    alert("Bulk commands sent");
+  };
 
   if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading...</div>;
 
@@ -90,11 +125,19 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
-        {/* Subtle background glow */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-indigo-500/20 blur-[120px] rounded-full pointer-events-none"></div>
 
         <header className="h-16 flex items-center justify-between px-8 border-b border-white/5 z-10 bg-zinc-950/50 backdrop-blur-md">
-          <h2 className="text-lg font-medium">Servers</h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-lg font-medium">Servers</h2>
+            {selectedVps.length > 0 && (
+              <div className="flex items-center gap-2 bg-indigo-500/20 px-3 py-1 rounded-full border border-indigo-500/30">
+                <span className="text-xs text-indigo-300">{selectedVps.length} selected</span>
+                <button onClick={() => executeBulkCommand('restart')} className="text-xs bg-indigo-600 hover:bg-indigo-500 px-2 py-1 rounded">Restart</button>
+                <button onClick={() => executeBulkCommand('stop')} className="text-xs bg-red-600 hover:bg-red-500 px-2 py-1 rounded">Stop</button>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-4">
             <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors" title="Toggle Theme">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
@@ -114,13 +157,21 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
               {vpsList.map(vps => {
                 const m = metricsMap[vps.id] || { CPUUsage: 0, RAMUsage: 0, NetTx: 0, NetRx: 0 };
+                const isSelected = selectedVps.includes(vps.id);
                 return (
-                  <div key={vps.id} className="group relative bg-zinc-900/50 backdrop-blur-xl border border-white/10 p-5 rounded-2xl overflow-hidden hover:border-indigo-500/50 transition-colors">
-                    {/* Glassmorphism reflection */}
-                    <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                  <div key={vps.id} className={`group relative bg-zinc-900/50 backdrop-blur-xl border ${isSelected ? 'border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.2)]' : 'border-white/10 hover:border-indigo-500/50'} p-5 rounded-2xl overflow-hidden transition-all duration-300`}>
                     
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
+                    <div className="absolute top-4 right-4 z-20">
+                      <input 
+                        type="checkbox" 
+                        checked={isSelected}
+                        onChange={() => toggleSelect(vps.id)}
+                        className="w-4 h-4 rounded border-gray-600 bg-gray-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex justify-between items-start mb-4 relative z-10">
+                      <div className="cursor-pointer" onClick={() => router.push(`/vps/${vps.id}`)}>
                         <h3 className="text-lg font-medium text-white flex items-center gap-2">
                           {vps.name}
                           <span className="flex h-2 w-2">
@@ -130,9 +181,15 @@ export default function Dashboard() {
                         </h3>
                         <p className="text-xs text-zinc-400 mt-1">{vps.ipAddress} • {vps.os}</p>
                       </div>
-                      <button onClick={() => router.push(`/vps/${vps.id}`)} className="bg-white/5 hover:bg-white/10 text-white text-xs px-3 py-1.5 rounded-lg border border-white/10 transition-colors">
-                        Details
-                      </button>
+                    </div>
+
+                    {/* Screenshot Area */}
+                    <div className="w-full h-32 bg-black/40 rounded-lg mb-4 border border-white/5 overflow-hidden flex items-center justify-center relative cursor-pointer" onClick={() => router.push(`/vps/${vps.id}`)}>
+                      {screenshots[vps.id] ? (
+                        <img src={`data:image/jpeg;base64,${screenshots[vps.id]}`} alt="Screenshot" className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-opacity" loading="lazy" />
+                      ) : (
+                        <div className="text-xs text-zinc-600">No screenshot available</div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -160,16 +217,16 @@ export default function Dashboard() {
                     </div>
 
                     {/* Network & Actions */}
-                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+                    <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between relative z-10">
                       <div className="text-[10px] text-zinc-500 flex gap-3">
                         <span className="flex items-center gap-1"><svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg> {(m.NetTx / 1024).toFixed(1)} KB/s</span>
                         <span className="flex items-center gap-1"><svg className="w-3 h-3 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg> {(m.NetRx / 1024).toFixed(1)} KB/s</span>
                       </div>
                       <div className="flex gap-2">
-                        <button className="p-1.5 hover:bg-white/10 rounded-md text-zinc-400 hover:text-white transition-colors" title="Restart">
+                        <button onClick={() => executeCommand(vps.id, 'restart')} className="p-1.5 hover:bg-white/10 rounded-md text-zinc-400 hover:text-white transition-colors" title="Restart">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
                         </button>
-                        <button className="p-1.5 hover:bg-white/10 rounded-md text-zinc-400 hover:text-red-400 transition-colors" title="Power Off">
+                        <button onClick={() => executeCommand(vps.id, 'stop')} className="p-1.5 hover:bg-white/10 rounded-md text-zinc-400 hover:text-red-400 transition-colors" title="Power Off">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         </button>
                       </div>

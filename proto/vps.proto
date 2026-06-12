@@ -4,15 +4,21 @@ package vps;
 
 option go_package = "./pb";
 
-service VpsAgent {
-  // Agent sends heartbeat & telemetry to Server
+service BackendService {
+  // Agent sends telemetry & screenshots to Server
   rpc StreamTelemetry (stream TelemetryRequest) returns (TelemetryResponse);
+  rpc UploadScreenshot (ScreenshotRequest) returns (ScreenshotResponse);
+}
+
+service AgentService {
+  // Server sends commands/requests to Agent
+  rpc ExecuteCommand (CommandRequest) returns (CommandResponse);
+  rpc ListDirectory (DirRequest) returns (DirResponse);
+  rpc ReadFile (FileRequest) returns (FileResponse);
+  rpc WriteFile (WriteRequest) returns (WriteResponse);
   
   // Interactive Shell / Web PTY
   rpc ShellStream (stream ShellMessage) returns (stream ShellMessage);
-  
-  // Commands sent from Server to Agent
-  rpc ExecuteCommand (CommandRequest) returns (CommandResponse);
 }
 
 message TelemetryRequest {
@@ -44,4 +50,52 @@ message CommandRequest {
 message CommandResponse {
   bool success = 1;
   string output = 2;
+}
+
+message DirRequest {
+  string vps_id = 1;
+  string path = 2;
+}
+
+message FileItem {
+  string name = 1;
+  bool is_dir = 2;
+  int64 size = 3;
+}
+
+message DirResponse {
+  bool success = 1;
+  repeated FileItem files = 2;
+  string error = 3;
+}
+
+message FileRequest {
+  string vps_id = 1;
+  string path = 2;
+}
+
+message FileResponse {
+  bool success = 1;
+  bytes content = 2;
+  string error = 3;
+}
+
+message WriteRequest {
+  string vps_id = 1;
+  string path = 2;
+  bytes content = 3;
+}
+
+message WriteResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ScreenshotRequest {
+  string vps_id = 1;
+  bytes image_data = 2;
+}
+
+message ScreenshotResponse {
+  bool success = 1;
 }

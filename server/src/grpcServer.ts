@@ -17,28 +17,39 @@ const vpsPackage = protoDescriptor.vps;
 
 const server = new grpc.Server();
 
-server.addService(vpsPackage.VpsAgent.service, {
+server.addService(vpsPackage.BackendService.service, {
   StreamTelemetry: (call: any) => {
     call.on('data', (request: any) => {
-      console.log(`[Telemetry] VPS ID: ${request.vps_id} - CPU: ${request.cpu_usage}%`);
-      // TODO: Push metrics to Redis Pub/Sub here
+      // console.log(`[Telemetry] VPS ID: ${request.vps_id} - CPU: ${request.cpu_usage}%`);
+      // Telemetry processing logic
+      const redisPublisher = require('./redis').redisPublisher;
+      if (redisPublisher) {
+        redisPublisher.publish(`telemetry:${request.vps_id}`, JSON.stringify({
+          vpsId: request.vps_id,
+          CPUUsage: request.cpu_usage,
+          RAMUsage: request.ram_usage,
+          RAMTotal: request.ram_total,
+          DiskUsage: request.disk_usage,
+          NetTx: request.net_tx,
+          NetRx: request.net_rx,
+          Timestamp: request.timestamp
+        }));
+      }
     });
     call.on('end', () => {
       call.end();
     });
   },
-  ShellStream: (call: any) => {
-    call.on('data', (message: any) => {
-      console.log(`[Shell] Received data from VPS ID: ${message.vps_id}`);
-      // TODO: Forward shell data to WebSockets
-    });
-    call.on('end', () => {
-      call.end();
-    });
-  },
-  ExecuteCommand: (call: any, callback: any) => {
-    console.log(`[Command] Received execution request for VPS: ${call.request.vps_id}`);
-    callback(null, { success: true, output: 'Command queued' });
+  UploadScreenshot: (call: any, callback: any) => {
+    // console.log(`[Screenshot] Received for VPS ID: ${call.request.vps_id}`);
+    const redisPublisher = require('./redis').redisPublisher;
+    if (redisPublisher) {
+      redisPublisher.publish(`screenshot:${call.request.vps_id}`, JSON.stringify({
+        vpsId: call.request.vps_id,
+        imageData: call.request.image_data.toString('base64')
+      }));
+    }
+    callback(null, { success: true });
   }
 });
 

@@ -1,48 +1,131 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
+import { executeCommand, listDirectory, readFile, writeFile } from '../grpcClient';
 
 export const vpsRouter = Router();
 
-// Get all VPS instances for the user (Admin gets all)
+// Helper to check ownership
+const checkVpsAccess = async (vpsId: string, user: any) => {
+  if (user.role === 'ADMIN') return true;
+  const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
+  return vps && vps.userId === user.id;
+};
+
+// Log action to DB
+const logAudit = async (userId: string, vpsId: string, action: string, details: string) => {
+  await prisma.auditLog.create({
+    data: { userId, vpsId, action, details }
+  });
+};
+
+// Get all VPS instances
 vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
     let vpsList;
-    
     if (user.role === 'ADMIN') {
-      vpsList = await prisma.vps.findMany({
-        include: { user: { select: { id: true, email: true } } }
-      });
+      vpsList = await prisma.vps.findMany({ include: { user: { select: { id: true, email: true } } } });
     } else {
-      vpsList = await prisma.vps.findMany({
-        where: { userId: user.id }
-      });
+      vpsList = await prisma.vps.findMany({ where: { userId: user.id } });
     }
-    
     res.json(vpsList);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch VPS list' });
   }
 });
 
-// Add a new VPS (Admin only)
+// Add a new VPS
 vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
-  if (req.user!.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Only admins can add VPS' });
-  }
-
+  if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
   const { name, ipAddress, os, userId } = req.body;
-  if (!name || !ipAddress || !os || !userId) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
+  if (!name || !ipAddress || !os || !userId) return res.status(400).json({ error: 'Missing required fields' });
   try {
-    const newVps = await prisma.vps.create({
-      data: { name, ipAddress, os, userId }
-    });
+    const newVps = await prisma.vps.create({ data: { name, ipAddress, os, userId } });
     res.json(newVps);
   } catch (error) {
     res.status(500).json({ error: 'Failed to add VPS' });
+  }
+});
+
+// Single command execution
+vpsRouter.post('/:id/command', requireAuth, async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id;
+  const { command } = req.body;
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await executeCommand(vpsId, command);
+    await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Executed: ${command}`);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk commands
+vpsRouter.post('/bulk/command', requireAuth, async (req: AuthRequest, res: any) => {
+  const { vpsIds, command } = req.body;
+  if (!Array.isArray(vpsIds) || !command) return res.status(400).json({ error: 'Invalid input' });
+
+  const results: any[] = [];
+  for (const vpsId of vpsIds) {
+    if (!await checkVpsAccess(vpsId, req.user)) {
+      results.push({ vpsId, success: false, error: 'Unauthorized' });
+      continue;
+    }
+    try {
+      const resData = await executeCommand(vpsId, command);
+      await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Bulk Executed: ${command}`);
+      results.push({ vpsId, success: true, data: resData });
+    } catch (err: any) {
+      results.push({ vpsId, success: false, error: err.message });
+    }
+  }
+  res.json({ results });
+});
+
+// List Directory
+vpsRouter.get('/:id/files', requireAuth, async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id;
+  const dirPath = (req.query.path as string) || '/';
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await listDirectory(vpsId, dirPath);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Read File
+vpsRouter.get('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id;
+  const filePath = req.query.path as string;
+  if (!filePath) return res.status(400).json({ error: 'Path required' });
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await readFile(vpsId, filePath);
+    res.json({ success: true, content: result.content.toString('utf-8') });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Write File
+vpsRouter.put('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id;
+  const { path: filePath, content } = req.body;
+  if (!filePath || content === undefined) return res.status(400).json({ error: 'Path and content required' });
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await writeFile(vpsId, filePath, Buffer.from(content, 'utf-8'));
+    await logAudit(req.user!.id, vpsId, 'FILE_EDIT', `Edited file: ${filePath}`);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });

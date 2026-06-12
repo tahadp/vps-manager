@@ -1,6 +1,7 @@
-import { redisSubscriber } from './redis';
+import { redisSubscriber, redisCache } from './redis';
 import axios from 'axios';
 import { prisma } from './prisma';
+import { executeCommand } from './grpcClient';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
@@ -30,14 +31,36 @@ export const initAlertingEngine = () => {
         
         // Kural 1: Disk Kullanımı > %95
         if (data.DiskUsage > 95) {
-          await sendTelegramAlert(vps.userId, `🚨 UYARI! VPS ${vps.name} (${vps.ipAddress}) Disk Kullanımı kritik seviyede: %${data.DiskUsage.toFixed(2)}`);
+          const diskKey = `vps_disk_alert:${vps.id}`;
+          const alerted = await redisCache.get(diskKey);
+          if (!alerted) {
+             await sendTelegramAlert(vps.userId, `🚨 UYARI! VPS ${vps.name} (${vps.ipAddress}) Disk Kullanımı kritik seviyede: %${data.DiskUsage.toFixed(2)}`);
+             await redisCache.set(diskKey, '1', 'EX', 3600); // 1 saat boyunca tekrar atmasın
+          }
         }
         
-        // Kural 2: CPU Kullanımı > %90
+        // Kural 2: CPU Kullanımı > %90 for 10 minutes
+        const cpuKey = `vps_cpu_alert:${vps.id}`;
         if (data.CPUUsage > 90) {
-           // check if key exists in redis, if not set with 10min expiry
-           // if exists and time diff > 10m, send alert and trigger restart
-           // To be implemented fully later.
+          const val = await redisCache.get(cpuKey);
+          if (!val) {
+            await redisCache.set(cpuKey, Date.now().toString());
+          } else {
+            const startTime = parseInt(val, 10);
+            const diffMins = (Date.now() - startTime) / 60000;
+            if (diffMins > 10) {
+               await sendTelegramAlert(vps.userId, `🚨 UYARI! VPS ${vps.name} (${vps.ipAddress}) CPU Kullanımı 10 dakikadır %90 üzerinde! Restart komutu gönderiliyor...`);
+               try {
+                 await executeCommand(vps.id, 'sudo systemctl restart docker || sudo service nginx restart');
+               } catch (cmdErr) {
+                 console.error('Failed to execute recovery command:', cmdErr);
+               }
+               // Reset timer after action
+               await redisCache.del(cpuKey);
+            }
+          }
+        } else {
+           await redisCache.del(cpuKey);
         }
       } catch (err) {
         console.error('Error parsing telemetry for alerting', err);

@@ -1,9 +1,9 @@
 import { Server } from 'socket.io';
 import http from 'http';
 import { redisSubscriber } from './redis';
-
 import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
+import { getAgentClient } from './grpcClient';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
@@ -28,6 +28,7 @@ export const initWebSocket = (server: http.Server) => {
 
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id, 'User:', socket.data.user.email);
+    let ptyStream: any = null;
 
     // İstemci belirli bir VPS'in odasına(room) katılmak isterse
     socket.on('subscribe_vps', async (vpsId: string) => {
@@ -46,19 +47,60 @@ export const initWebSocket = (server: http.Server) => {
       }
     });
 
+    // PTY Connection
+    socket.on('pty_connect', async (vpsId: string) => {
+      try {
+        const user = socket.data.user;
+        if (user.role !== 'ADMIN') {
+          const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
+          if (!vps || vps.userId !== user.id) return socket.emit('pty_error', 'Unauthorized');
+        }
+
+        const agentClient = await getAgentClient(vpsId);
+        ptyStream = agentClient.ShellStream();
+        
+        ptyStream.on('data', (msg: any) => {
+          socket.emit('pty_output', msg.data.toString('utf-8'));
+        });
+
+        ptyStream.on('error', (err: any) => {
+          socket.emit('pty_error', err.message);
+        });
+
+        ptyStream.on('end', () => {
+          socket.emit('pty_output', '\r\n[Connection closed]\r\n');
+        });
+
+      } catch (err: any) {
+        socket.emit('pty_error', err.message);
+      }
+    });
+
+    socket.on('pty_input', (data: string) => {
+      if (ptyStream) {
+        ptyStream.write({ data: Buffer.from(data, 'utf-8') });
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
+      if (ptyStream) {
+        ptyStream.end();
+      }
     });
   });
 
   // Redis Pub/Sub'dan gelen verileri WebSocket ile ilgili odalara dağıt
-  redisSubscriber.psubscribe('telemetry:*', (err, count) => {
+  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', (err, count) => {
     if (err) console.error('Redis PSubscribe Error:', err);
   });
 
   redisSubscriber.on('pmessage', (pattern, channel, message) => {
-    // channel formatı: telemetry:123
     const vpsId = channel.split(':')[1];
-    io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
+    if (pattern === 'telemetry:*') {
+      io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
+    } else if (pattern === 'screenshot:*') {
+      io.to(`vps_${vpsId}`).emit('screenshot_update', JSON.parse(message));
+    }
   });
 };
