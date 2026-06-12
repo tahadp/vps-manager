@@ -2,10 +2,16 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { Terminal } from "xterm";
+import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import Editor from "@monaco-editor/react";
 import "xterm/css/xterm.css";
+import { motion } from "framer-motion";
+import { 
+  Server, Cpu, MemoryStick, HardDrive, TerminalSquare, 
+  FolderOpen, MonitorPlay, ArrowLeft, RefreshCw, PowerOff,
+  FileText, Folder, Save, AlertCircle
+} from "lucide-react";
 
 export default function VpsDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -24,7 +30,7 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
 
   // Terminal & Socket
   const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<Terminal | null>(null);
+  const xtermRef = useRef<XTerm | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -64,10 +70,15 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
   // Setup Terminal when tab is active
   useEffect(() => {
     if (activeTab === "terminal" && terminalRef.current && socketRef.current && !xtermRef.current) {
-      const term = new Terminal({
-        theme: { background: "#000000", foreground: "#ffffff" },
-        fontFamily: "monospace",
-        fontSize: 14
+      const term = new XTerm({
+        theme: { 
+          background: "#18181b", // zinc-900 
+          foreground: "#f4f4f5", // zinc-100
+          cursor: "#8251EE"
+        },
+        fontFamily: "'Geist Mono', monospace",
+        fontSize: 14,
+        cursorBlink: true
       });
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
@@ -143,135 +154,263 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ command })
     });
-    alert("Command queued");
   };
 
-  if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading...</div>;
-  if (!vps) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">VPS not found</div>;
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-text-muted">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mb-4" />
+        Connecting to instance...
+      </div>
+    );
+  }
+  
+  if (!vps) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-text-muted">
+        <AlertCircle className="w-8 h-8 text-status-error mb-4" />
+        VPS not found or access denied.
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <header className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white">{vps.name}</h1>
-            <p className="text-zinc-400 text-sm mt-1">{vps.ipAddress} • {vps.os}</p>
-          </div>
-          <button onClick={() => router.push('/')} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors text-sm font-medium">
-            Back to Dashboard
+    <div className="max-w-[1600px] mx-auto pb-12">
+      <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => router.push('/')} 
+            className="w-10 h-10 rounded-xl bg-neutral-bg2 border border-border-DEFAULT flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-neutral-bg3 transition-colors shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5" />
           </button>
-        </header>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 flex flex-col h-[700px] bg-zinc-900/50 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xl">
-            {/* Tabs */}
-            <div className="flex border-b border-white/10 bg-black/20">
-              <button onClick={() => setActiveTab('terminal')} className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'terminal' ? 'text-white border-b-2 border-indigo-500' : 'text-zinc-400 hover:text-white'}`}>Terminal</button>
-              <button onClick={() => setActiveTab('files')} className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'files' ? 'text-white border-b-2 border-indigo-500' : 'text-zinc-400 hover:text-white'}`}>File Manager</button>
-              <button onClick={() => setActiveTab('rustdesk')} className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'rustdesk' ? 'text-white border-b-2 border-indigo-500' : 'text-zinc-400 hover:text-white'}`}>Rustdesk Web</button>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-3">
+              {vps.name}
+              <span className="flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-status-success opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-status-success"></span>
+              </span>
+            </h1>
+            <div className="text-text-muted text-sm mt-1 flex items-center gap-2 font-mono">
+              <Server className="w-3.5 h-3.5" />
+              {vps.ipAddress}
+              <span className="text-border-strong">•</span>
+              {vps.os}
             </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* Main Workspace (Left) */}
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="lg:col-span-9 flex flex-col h-[750px] bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl overflow-hidden backdrop-blur-xl shadow-lg"
+        >
+          {/* Tabs */}
+          <div className="flex border-b border-border-DEFAULT bg-neutral-bg1">
+            <button 
+              onClick={() => setActiveTab('terminal')} 
+              className={`flex items-center gap-2 px-6 py-3.5 text-sm font-medium transition-colors relative ${activeTab === 'terminal' ? 'text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-neutral-bg2'}`}
+            >
+              <TerminalSquare className="w-4 h-4" />
+              Terminal
+              {activeTab === 'terminal' && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
+            </button>
+            <button 
+              onClick={() => setActiveTab('files')} 
+              className={`flex items-center gap-2 px-6 py-3.5 text-sm font-medium transition-colors relative ${activeTab === 'files' ? 'text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-neutral-bg2'}`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              File Manager
+              {activeTab === 'files' && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
+            </button>
+            <button 
+              onClick={() => setActiveTab('rustdesk')} 
+              className={`flex items-center gap-2 px-6 py-3.5 text-sm font-medium transition-colors relative ${activeTab === 'rustdesk' ? 'text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-neutral-bg2'}`}
+            >
+              <MonitorPlay className="w-4 h-4" />
+              Remote Desktop
+              {activeTab === 'rustdesk' && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
+            </button>
+          </div>
+          
+          {/* Tab Contents */}
+          <div className="flex-1 overflow-hidden relative bg-neutral-bg1">
             
-            {/* Tab Contents */}
-            <div className="flex-1 overflow-hidden relative">
-              {activeTab === 'terminal' && (
-                <div className="absolute inset-0 p-2 bg-black" ref={terminalRef}></div>
-              )}
-              {activeTab === 'files' && (
-                <div className="flex h-full">
-                  <div className="w-1/3 border-r border-white/10 p-4 overflow-y-auto">
-                    <div className="text-sm text-zinc-400 mb-4">{currentPath}</div>
+            {/* Terminal */}
+            {activeTab === 'terminal' && (
+              <div className="absolute inset-0 p-4" ref={terminalRef} />
+            )}
+            
+            {/* File Manager */}
+            {activeTab === 'files' && (
+              <div className="flex h-full">
+                <div className="w-1/3 border-r border-border-DEFAULT p-2 flex flex-col bg-neutral-bg1/50">
+                  <div className="px-3 py-2 text-xs font-mono text-text-secondary bg-neutral-bg2 rounded-lg border border-border-subtle mb-2 truncate">
+                    {currentPath}
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-1 pr-1">
                     {currentPath !== "/" && (
-                      <div className="cursor-pointer text-indigo-400 mb-2" onClick={() => setCurrentPath(currentPath.split("/").slice(0, -1).join("/") || "/")}>
-                        📂 ..
+                      <div 
+                        className="flex items-center gap-2 p-2 hover:bg-neutral-bg3 rounded-lg cursor-pointer text-sm text-text-primary transition-colors" 
+                        onClick={() => setCurrentPath(currentPath.split("/").slice(0, -1).join("/") || "/")}
+                      >
+                        <Folder className="w-4 h-4 text-brand-light" />
+                        ..
                       </div>
                     )}
                     {files.map(f => (
-                      <div key={f.name} className="flex justify-between items-center p-2 hover:bg-white/5 cursor-pointer text-sm" onClick={() => f.isDir ? setCurrentPath(currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`) : openFile(f.name)}>
-                        <span>{f.isDir ? "📁" : "📄"} {f.name}</span>
-                        {!f.isDir && <span className="text-xs text-zinc-500">{f.size} B</span>}
+                      <div 
+                        key={f.name} 
+                        className={`flex justify-between items-center p-2 rounded-lg cursor-pointer text-sm transition-colors ${selectedFile === (currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`) ? 'bg-brand/20 text-brand-light' : 'hover:bg-neutral-bg3 text-text-primary'}`} 
+                        onClick={() => f.isDir ? setCurrentPath(currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`) : openFile(f.name)}
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          {f.isDir ? <Folder className="w-4 h-4 text-dataviz-blue shrink-0" /> : <FileText className="w-4 h-4 text-text-muted shrink-0" />}
+                          <span className="truncate">{f.name}</span>
+                        </span>
+                        {!f.isDir && <span className="text-xs text-text-muted shrink-0 ml-2">{(f.size / 1024).toFixed(1)} KB</span>}
                       </div>
                     ))}
                   </div>
-                  <div className="w-2/3 flex flex-col">
-                    {selectedFile ? (
-                      <>
-                        <div className="p-2 border-b border-white/10 flex justify-between items-center bg-black/40">
-                          <span className="text-sm font-mono text-zinc-300">{selectedFile}</span>
-                          <button onClick={saveFile} disabled={savingFile} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs">
-                            {savingFile ? "Saving..." : "Save"}
-                          </button>
-                        </div>
-                        <div className="flex-1">
-                          <Editor
-                            height="100%"
-                            theme="vs-dark"
-                            value={fileContent}
-                            onChange={(val) => setFileContent(val || "")}
-                            options={{ minimap: { enabled: false } }}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-zinc-500">Select a file to edit</div>
-                    )}
-                  </div>
                 </div>
-              )}
-              {activeTab === 'rustdesk' && (
-                <div className="absolute inset-0 bg-black flex items-center justify-center">
-                   <iframe src={process.env.NEXT_PUBLIC_RUSTDESK_URL || "http://localhost:2111/"} className="w-full h-full border-0" title="Rustdesk Web Viewer"></iframe>
-                   {/* In production, URL should point to actual rustdesk web client deployed */}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white mb-4">Quick Actions</h2>
-              <div className="space-y-3">
-                <button onClick={() => executeAction('stop')} className="w-full py-3 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-xl text-sm font-medium transition-colors border border-red-500/20">
-                  Stop Server
-                </button>
-                <button onClick={() => executeAction('restart')} className="w-full py-3 bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-400 rounded-xl text-sm font-medium transition-colors border border-yellow-500/20">
-                  Restart Server
-                </button>
-              </div>
-            </div>
-
-            <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-              <h2 className="text-lg font-semibold text-white mb-4">Live Metrics</h2>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-zinc-400">CPU Usage</span>
-                    <span className="text-white">{telemetry.CPUUsage?.toFixed(1) || 0}%</span>
-                  </div>
-                  <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500" style={{ width: `${telemetry.CPUUsage || 0}%` }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-zinc-400">RAM Usage</span>
-                    <span className="text-white">{telemetry.RAMUsage?.toFixed(1) || 0}%</span>
-                  </div>
-                  <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-500" style={{ width: `${telemetry.RAMUsage || 0}%` }}></div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-zinc-400">Disk Usage</span>
-                    <span className="text-white">{telemetry.DiskUsage?.toFixed(1) || 0}%</span>
-                  </div>
-                  <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-purple-500" style={{ width: `${telemetry.DiskUsage || 0}%` }}></div>
-                  </div>
+                
+                <div className="w-2/3 flex flex-col">
+                  {selectedFile ? (
+                    <>
+                      <div className="px-4 py-2 border-b border-border-DEFAULT flex justify-between items-center bg-neutral-bg2/50">
+                        <span className="text-sm font-mono text-text-primary truncate mr-4">{selectedFile}</span>
+                        <button 
+                          onClick={saveFile} 
+                          disabled={savingFile} 
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-medium text-white transition-colors shadow-glow"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          {savingFile ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                      <div className="flex-1">
+                        <Editor
+                          height="100%"
+                          theme="vs-dark"
+                          value={fileContent}
+                          onChange={(val) => setFileContent(val || "")}
+                          options={{ 
+                            minimap: { enabled: false },
+                            fontFamily: "'Geist Mono', monospace",
+                            fontSize: 13,
+                            padding: { top: 16 }
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-text-muted">
+                      <FileText className="w-12 h-12 mb-3 opacity-20" />
+                      Select a file to edit
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Remote Desktop */}
+            {activeTab === 'rustdesk' && (
+              <div className="absolute inset-0 bg-neutral-bg1 flex flex-col items-center justify-center">
+                 <iframe 
+                   src={process.env.NEXT_PUBLIC_RUSTDESK_URL || "http://localhost:2111/"} 
+                   className="w-full h-full border-0" 
+                   title="Rustdesk Web Viewer"
+                 />
+              </div>
+            )}
           </div>
+        </motion.div>
+
+        {/* Sidebar (Right) */}
+        <div className="lg:col-span-3 space-y-6">
+          
+          {/* Telemetry Metrics */}
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-6 backdrop-blur-xl shadow-sm"
+          >
+            <h2 className="text-sm font-bold tracking-wider uppercase text-text-muted mb-6">Live Metrics</h2>
+            
+            <div className="space-y-6">
+              {/* CPU */}
+              <div>
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-sm font-medium text-text-primary flex items-center gap-2">
+                    <Cpu className="w-4 h-4 text-brand" /> CPU Usage
+                  </span>
+                  <span className="text-sm font-mono text-text-secondary">{telemetry.CPUUsage?.toFixed(1) || 0}%</span>
+                </div>
+                <div className="h-2.5 bg-neutral-bg3 rounded-full overflow-hidden">
+                  <div className={`h-full transition-all duration-500 ${(telemetry.CPUUsage || 0) > 85 ? 'bg-status-error' : 'bg-brand'}`} style={{ width: `${telemetry.CPUUsage || 0}%` }}></div>
+                </div>
+              </div>
+
+              {/* RAM */}
+              <div>
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-sm font-medium text-text-primary flex items-center gap-2">
+                    <MemoryStick className="w-4 h-4 text-dataviz-purple" /> RAM Usage
+                  </span>
+                  <span className="text-sm font-mono text-text-secondary">{telemetry.RAMUsage?.toFixed(1) || 0}%</span>
+                </div>
+                <div className="h-2.5 bg-neutral-bg3 rounded-full overflow-hidden">
+                  <div className={`h-full transition-all duration-500 ${(telemetry.RAMUsage || 0) > 85 ? 'bg-status-warning' : 'bg-dataviz-purple'}`} style={{ width: `${telemetry.RAMUsage || 0}%` }}></div>
+                </div>
+              </div>
+
+              {/* Disk */}
+              <div>
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-sm font-medium text-text-primary flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-dataviz-blue" /> Disk Usage
+                  </span>
+                  <span className="text-sm font-mono text-text-secondary">{telemetry.DiskUsage?.toFixed(1) || 0}%</span>
+                </div>
+                <div className="h-2.5 bg-neutral-bg3 rounded-full overflow-hidden">
+                  <div className="h-full bg-dataviz-blue transition-all duration-500" style={{ width: `${telemetry.DiskUsage || 0}%` }}></div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Quick Actions */}
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-6 backdrop-blur-xl shadow-sm"
+          >
+            <h2 className="text-sm font-bold tracking-wider uppercase text-text-muted mb-4">Quick Actions</h2>
+            <div className="space-y-3">
+              <button 
+                onClick={() => executeAction('restart')} 
+                className="w-full flex items-center justify-center gap-2 py-3 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-primary rounded-xl text-sm font-medium transition-colors border border-border-subtle"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Restart Server
+              </button>
+              <button 
+                onClick={() => executeAction('stop')} 
+                className="w-full flex items-center justify-center gap-2 py-3 bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-xl text-sm font-medium transition-colors border border-status-error/20"
+              >
+                <PowerOff className="w-4 h-4" />
+                Stop Server
+              </button>
+            </div>
+          </motion.div>
+
         </div>
       </div>
     </div>

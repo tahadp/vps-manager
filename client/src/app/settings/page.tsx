@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Settings as SettingsIcon, MessageCircle, Shield, Bell, Plus, Trash2, Key, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function Settings() {
   const router = useRouter();
@@ -8,9 +10,15 @@ export default function Settings() {
   // Telegram State
   const [token, setToken] = useState("");
   const [chatId, setChatId] = useState("");
-  const [msg, setMsg] = useState("");
-  const [error, setError] = useState("");
+  const [telegramMsg, setTelegramMsg] = useState("");
+  const [telegramError, setTelegramError] = useState("");
   
+  // Password State
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [pwdMsg, setPwdMsg] = useState("");
+  const [pwdError, setPwdError] = useState("");
+
   // Rules State
   const [rules, setRules] = useState<any[]>([]);
   const [vpsList, setVpsList] = useState<any[]>([]);
@@ -72,7 +80,7 @@ export default function Settings() {
   };
 
   const handleSaveTelegram = async () => {
-    setMsg(""); setError("");
+    setTelegramMsg(""); setTelegramError("");
     const jwt = localStorage.getItem("token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/telegram`, {
@@ -83,15 +91,15 @@ export default function Settings() {
         },
         body: JSON.stringify({ telegramBotToken: token, telegramChatId: chatId })
       });
-      if (res.ok) setMsg("Telegram configuration saved.");
-      else setError("Failed to save configuration.");
+      if (res.ok) setTelegramMsg("Telegram configuration saved successfully.");
+      else setTelegramError("Failed to save configuration.");
     } catch (err) {
-      setError("An error occurred.");
+      setTelegramError("An error occurred.");
     }
   };
 
   const handleTestTelegram = async () => {
-    setMsg(""); setError("");
+    setTelegramMsg(""); setTelegramError("");
     const jwt = localStorage.getItem("token");
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/telegram/test`, {
@@ -99,10 +107,36 @@ export default function Settings() {
         headers: { Authorization: `Bearer ${jwt}` }
       });
       const data = await res.json();
-      if (res.ok) setMsg(data.message);
-      else setError(data.error);
+      if (res.ok) setTelegramMsg(data.message);
+      else setTelegramError(data.error);
     } catch (err) {
-      setError("Failed to send test message.");
+      setTelegramError("Failed to send test message.");
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdMsg(""); setPwdError("");
+    const jwt = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/change-password`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`
+        },
+        body: JSON.stringify({ oldPassword, newPassword })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPwdMsg("Password changed successfully.");
+        setOldPassword("");
+        setNewPassword("");
+      } else {
+        setPwdError(data.error || "Failed to change password.");
+      }
+    } catch (err) {
+      setPwdError("Failed to connect to server.");
     }
   };
 
@@ -142,171 +176,263 @@ export default function Settings() {
     } catch (err) {}
   };
 
-  if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-text-muted">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mb-4" />
+        Loading settings...
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-8 font-sans">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <header className="flex justify-between items-center mb-10">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Settings</h1>
-            <p className="text-zinc-400 text-sm">Configure your personal preferences, integrations, and alerting rules.</p>
-          </div>
-          <button onClick={() => router.push('/')} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors text-sm font-medium">
-            Back to Dashboard
-          </button>
-        </header>
+    <div className="max-w-5xl mx-auto space-y-8 pb-12">
+      <header>
+        <h1 className="text-3xl font-bold tracking-tight text-text-primary mb-2 flex items-center gap-3">
+          <SettingsIcon className="w-8 h-8 text-brand" />
+          Platform Settings
+        </h1>
+        <p className="text-text-secondary text-sm">
+          Configure your personal preferences, security, integrations, and alerting rules.
+        </p>
+      </header>
 
-        {/* Telegram Config */}
-        <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zM8.287 5.906c-.778.324-2.334.994-4.666 2.01-.378.15-.577.298-.595.442-.03.243.275.339.69.47l.175.055c.408.133.958.288 1.243.294.26.006.549-.1.868-.32 2.179-1.471 3.304-2.214 3.374-2.23.05-.012.12-.026.166.016.047.041.042.12.037.141-.03.129-1.227 1.241-1.846 1.817-.193.18-.33.307-.358.336a8.154 8.154 0 0 1-.188.186c-.38.366-.664.64.015 1.088.327.216.589.393.85.571.284.194.568.387.936.629.093.06.183.125.27.187.331.236.63.448.997.414.214-.02.435-.22.547-.82.265-1.417.786-4.486.906-5.751a1.426 1.426 0 0 0-.013-.315.337.337 0 0 0-.114-.217.526.526 0 0 0-.31-.093c-.3.005-.763.166-2.984 1.09z"/>
-              </svg>
-            </span>
-            Telegram Configuration
-          </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* Left Column: Security & Integrations */}
+        <div className="lg:col-span-5 space-y-8">
           
-          {error && <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl">{error}</div>}
-          {msg && <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm rounded-xl">{msg}</div>}
-
-          <div className="space-y-4 max-w-2xl">
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Bot Token</label>
-              <input 
-                type="text" 
-                className="w-full p-3 rounded-xl bg-black/40 border border-white/10 focus:outline-none focus:border-indigo-500 text-white" 
-                value={token} onChange={(e) => setToken(e.target.value)}
-                placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5 uppercase tracking-wider">Chat ID</label>
-              <input 
-                type="text" 
-                className="w-full p-3 rounded-xl bg-black/40 border border-white/10 focus:outline-none focus:border-indigo-500 text-white" 
-                value={chatId} onChange={(e) => setChatId(e.target.value)}
-                placeholder="-1001234567890"
-              />
-            </div>
+          {/* Change Password */}
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 shadow-sm"
+          >
+            <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+              <Shield className="w-5 h-5 text-dataviz-purple" />
+              Account Security
+            </h2>
             
-            <div className="flex gap-3 pt-4 border-t border-white/10">
-              <button onClick={handleSaveTelegram} className="flex-1 p-3 bg-indigo-600 hover:bg-indigo-500 text-white transition-colors font-medium rounded-xl">
-                Save Configuration
-              </button>
-              <button onClick={handleTestTelegram} className="px-6 p-3 bg-zinc-800 hover:bg-zinc-700 text-white transition-colors font-medium rounded-xl border border-white/5">
-                Test Connection
-              </button>
-            </div>
-          </div>
-        </div>
+            {pwdError && <div className="mb-4 p-3 bg-status-error/10 border border-status-error/20 text-status-error text-sm rounded-xl flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5"/>{pwdError}</div>}
+            {pwdMsg && <div className="mb-4 p-3 bg-status-success/10 border border-status-success/20 text-status-success text-sm rounded-xl flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5"/>{pwdMsg}</div>}
 
-        {/* Dynamic Alerting Rules */}
-        <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </span>
-            Alerting Engine Rules
-          </h2>
-          <p className="text-zinc-400 text-sm mb-6">Create dynamic rules to monitor your servers. If a condition is met for the specified duration, the action will be triggered automatically.</p>
-
-          <div className="bg-black/40 border border-white/5 rounded-xl p-4 mb-8">
-            <h3 className="text-sm font-medium text-white mb-4">Add New Rule</h3>
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-[10px] uppercase text-zinc-500 mb-1">Target VPS</label>
-                <select 
-                  className="w-full p-2 bg-zinc-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
-                  value={newRule.vpsId} onChange={e => setNewRule({...newRule, vpsId: e.target.value})}
-                >
-                  <option value="">All VPS</option>
-                  {vpsList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase tracking-wider">Current Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Key className="w-4 h-4 text-text-muted" />
+                  </div>
+                  <input 
+                    type="password" 
+                    required
+                    className="w-full pl-10 p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-text-primary placeholder:text-text-muted/50 transition-all" 
+                    value={oldPassword} onChange={(e) => setOldPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase tracking-wider">New Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Key className="w-4 h-4 text-text-muted" />
+                  </div>
+                  <input 
+                    type="password" 
+                    required
+                    className="w-full pl-10 p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand text-text-primary placeholder:text-text-muted/50 transition-all" 
+                    value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </div>
               </div>
               
-              <div className="col-span-1">
-                <label className="block text-[10px] uppercase text-zinc-500 mb-1">Metric</label>
-                <select 
-                  className="w-full p-2 bg-zinc-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
-                  value={newRule.metric} onChange={e => setNewRule({...newRule, metric: e.target.value})}
-                >
-                  <option value="CPU">CPU</option>
-                  <option value="RAM">RAM</option>
-                  <option value="DISK">Disk</option>
-                </select>
+              <div className="pt-2">
+                <button type="submit" className="w-full p-2.5 bg-brand hover:bg-brand-hover text-white transition-colors font-medium rounded-xl shadow-glow">
+                  Update Password
+                </button>
               </div>
+            </form>
+          </motion.div>
 
-              <div className="col-span-1">
-                <label className="block text-[10px] uppercase text-zinc-500 mb-1">Condition</label>
-                <select 
-                  className="w-full p-2 bg-zinc-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
-                  value={newRule.condition} onChange={e => setNewRule({...newRule, condition: e.target.value})}
-                >
-                  <option value=">">&gt; (Greater)</option>
-                  <option value="<">&lt; (Less)</option>
-                </select>
-              </div>
+          {/* Telegram Config */}
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 shadow-sm"
+          >
+            <h2 className="text-lg font-bold text-text-primary mb-4 flex items-center gap-2">
+              <MessageCircle className="w-5 h-5 text-dataviz-blue" />
+              Telegram Integration
+            </h2>
+            
+            {telegramError && <div className="mb-4 p-3 bg-status-error/10 border border-status-error/20 text-status-error text-sm rounded-xl flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5"/>{telegramError}</div>}
+            {telegramMsg && <div className="mb-4 p-3 bg-status-success/10 border border-status-success/20 text-status-success text-sm rounded-xl flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5"/>{telegramMsg}</div>}
 
-              <div className="col-span-1">
-                <label className="block text-[10px] uppercase text-zinc-500 mb-1">Threshold (%)</label>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase tracking-wider">Bot Token</label>
                 <input 
-                  type="number" 
-                  className="w-full p-2 bg-zinc-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
-                  value={newRule.threshold} onChange={e => setNewRule({...newRule, threshold: Number(e.target.value)})}
+                  type="text" 
+                  className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT focus:outline-none focus:border-dataviz-blue focus:ring-1 focus:ring-dataviz-blue text-text-primary placeholder:text-text-muted/50 transition-all" 
+                  value={token} onChange={(e) => setToken(e.target.value)}
+                  placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
                 />
               </div>
-
-              <div className="col-span-1">
-                <label className="block text-[10px] uppercase text-zinc-500 mb-1">Duration (Min)</label>
+              <div>
+                <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase tracking-wider">Chat ID</label>
                 <input 
-                  type="number" 
-                  className="w-full p-2 bg-zinc-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
-                  value={newRule.durationMin} onChange={e => setNewRule({...newRule, durationMin: Number(e.target.value)})}
+                  type="text" 
+                  className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT focus:outline-none focus:border-dataviz-blue focus:ring-1 focus:ring-dataviz-blue text-text-primary placeholder:text-text-muted/50 transition-all" 
+                  value={chatId} onChange={(e) => setChatId(e.target.value)}
+                  placeholder="-1001234567890"
                 />
               </div>
-
-              <div className="col-span-2 md:col-span-1">
-                <label className="block text-[10px] uppercase text-zinc-500 mb-1">Action</label>
-                <select 
-                  className="w-full p-2 bg-zinc-900 border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500"
-                  value={newRule.action} onChange={e => setNewRule({...newRule, action: e.target.value})}
-                >
-                  <option value="NOTIFY_ONLY">Notify Only</option>
-                  <option value="RESTART">Restart Services</option>
-                </select>
+              
+              <div className="flex gap-3 pt-2">
+                <button onClick={handleSaveTelegram} className="flex-1 p-2.5 bg-neutral-bg4 hover:bg-neutral-bg5 text-white transition-colors font-medium rounded-xl border border-border-subtle">
+                  Save
+                </button>
+                <button onClick={handleTestTelegram} className="flex-1 p-2.5 bg-dataviz-blue/20 hover:bg-dataviz-blue/30 text-dataviz-blue transition-colors font-medium rounded-xl border border-dataviz-blue/30">
+                  Test Ping
+                </button>
               </div>
             </div>
-            <button onClick={handleAddRule} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors">
-              + Add Rule
-            </button>
-          </div>
+          </motion.div>
 
-          <div>
-            <h3 className="text-sm font-medium text-white mb-4">Active Rules</h3>
-            {rules.length === 0 ? (
-              <div className="text-zinc-500 text-sm">No rules configured.</div>
-            ) : (
-              <div className="space-y-3">
-                {rules.map(rule => (
-                  <div key={rule.id} className="flex items-center justify-between p-4 bg-zinc-900/80 border border-white/5 rounded-xl">
-                    <div className="flex flex-col">
-                      <span className="text-white font-medium text-sm">
-                        If {rule.vps ? rule.vps.name : 'ALL VPS'} {rule.metric} is {rule.condition} {rule.threshold}% for {rule.durationMin} minutes
-                      </span>
-                      <span className="text-zinc-400 text-xs mt-1">
-                        Action: <strong className={rule.action === 'RESTART' ? 'text-red-400' : 'text-blue-400'}>{rule.action}</strong>
-                      </span>
-                    </div>
-                    <button onClick={() => handleDeleteRule(rule.id)} className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                    </button>
-                  </div>
-                ))}
+        </div>
+
+        {/* Right Column: Alerting Engine */}
+        <div className="lg:col-span-7">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 shadow-sm h-full"
+          >
+            <h2 className="text-lg font-bold text-text-primary mb-2 flex items-center gap-2">
+              <Bell className="w-5 h-5 text-dataviz-yellow" />
+              Alerting Engine Rules
+            </h2>
+            <p className="text-text-secondary text-sm mb-6">Create dynamic rules to monitor your servers. If a condition is met for the specified duration, the action will be triggered automatically.</p>
+
+            {/* Create Rule Form */}
+            <div className="bg-neutral-bg1 border border-border-subtle rounded-xl p-5 mb-8">
+              <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-brand" />
+                Add New Rule
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-5">
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Target VPS</label>
+                  <select 
+                    className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    value={newRule.vpsId} onChange={e => setNewRule({...newRule, vpsId: e.target.value})}
+                  >
+                    <option value="">All VPS</option>
+                    {vpsList.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </div>
+                
+                <div className="col-span-1">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Metric</label>
+                  <select 
+                    className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    value={newRule.metric} onChange={e => setNewRule({...newRule, metric: e.target.value})}
+                  >
+                    <option value="CPU">CPU</option>
+                    <option value="RAM">RAM</option>
+                    <option value="DISK">Disk</option>
+                  </select>
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Condition</label>
+                  <select 
+                    className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    value={newRule.condition} onChange={e => setNewRule({...newRule, condition: e.target.value})}
+                  >
+                    <option value=">">&gt; (Greater)</option>
+                    <option value="<">&lt; (Less)</option>
+                  </select>
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Threshold (%)</label>
+                  <input 
+                    type="number" 
+                    className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    value={newRule.threshold} onChange={e => setNewRule({...newRule, threshold: Number(e.target.value)})}
+                  />
+                </div>
+
+                <div className="col-span-1">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Duration (Min)</label>
+                  <input 
+                    type="number" 
+                    className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    value={newRule.durationMin} onChange={e => setNewRule({...newRule, durationMin: Number(e.target.value)})}
+                  />
+                </div>
+
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Action</label>
+                  <select 
+                    className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
+                    value={newRule.action} onChange={e => setNewRule({...newRule, action: e.target.value})}
+                  >
+                    <option value="NOTIFY_ONLY">Notify Only</option>
+                    <option value="RESTART">Restart</option>
+                  </select>
+                </div>
               </div>
-            )}
-          </div>
+              <button onClick={handleAddRule} className="w-full sm:w-auto px-5 py-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-primary rounded-lg text-sm font-medium transition-colors border border-border-DEFAULT">
+                Create Rule
+              </button>
+            </div>
+
+            {/* Rules List */}
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary mb-4 flex items-center justify-between">
+                <span>Active Rules</span>
+                <span className="bg-neutral-bg3 text-text-secondary py-0.5 px-2 rounded-md text-xs">{rules.length}</span>
+              </h3>
+              
+              {rules.length === 0 ? (
+                <div className="text-center py-10 border border-dashed border-border-strong rounded-xl bg-neutral-bg1/50">
+                  <Bell className="w-8 h-8 text-text-muted mx-auto mb-2 opacity-50" />
+                  <p className="text-text-muted text-sm">No alerting rules configured yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {rules.map(rule => (
+                    <div key={rule.id} className="group flex items-center justify-between p-4 bg-neutral-bg1 border border-border-subtle hover:border-border-DEFAULT rounded-xl transition-colors">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-text-primary font-medium text-sm">
+                          If <span className="text-brand font-semibold">{rule.vps ? rule.vps.name : 'ANY VPS'}</span> {rule.metric} is {rule.condition} {rule.threshold}% for {rule.durationMin} mins
+                        </span>
+                        <span className="text-text-muted text-xs flex items-center gap-1.5">
+                          Action: 
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${rule.action === 'RESTART' ? 'bg-status-error/10 text-status-error' : 'bg-status-info/10 text-status-info'}`}>
+                            {rule.action}
+                          </span>
+                        </span>
+                      </div>
+                      <button 
+                        onClick={() => handleDeleteRule(rule.id)} 
+                        className="p-2 text-text-muted hover:text-status-error hover:bg-status-error/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        title="Delete Rule"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
         </div>
 
       </div>

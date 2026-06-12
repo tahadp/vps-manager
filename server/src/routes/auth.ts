@@ -2,22 +2,30 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
+import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 
 export const authRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
 
 authRouter.post('/register', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, username, password } = req.body;
   
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password required' });
   }
 
   try {
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findFirst({ 
+      where: { 
+        OR: [
+          { email },
+          ...(username ? [{ username }] : [])
+        ]
+      } 
+    });
     if (existing) {
-      return res.status(400).json({ error: 'User already exists' });
+      return res.status(400).json({ error: 'User with this email or username already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -25,23 +33,37 @@ authRouter.post('/register', async (req, res) => {
     const user = await prisma.user.create({
       data: {
         email,
+        username,
         password: hashedPassword,
         status: 'PENDING', // Admin onayı gerekli
         role: 'USER',
       }
     });
 
-    res.json({ message: 'Registration successful. Waiting for admin approval.', user: { id: user.id, email: user.email } });
+    res.json({ message: 'Registration successful. Waiting for admin approval.', user: { id: user.id, email: user.email, username: user.username } });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 authRouter.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, username, identifier, password, rememberMe } = req.body;
   
+  const loginIdentifier = identifier || email || username;
+
+  if (!loginIdentifier || !password) {
+    return res.status(400).json({ error: 'Identifier and password required' });
+  }
+
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: loginIdentifier },
+          { username: loginIdentifier }
+        ]
+      }
+    });
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     if (user.status !== 'APPROVED' && user.role !== 'ADMIN') {
@@ -51,9 +73,46 @@ authRouter.post('/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn: '1d' });
+    const expiresIn = rememberMe ? '30d' : '1d';
+    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn });
     
-    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+    res.json({ token, user: { id: user.id, email: user.email, username: user.username, role: user.role } });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+authRouter.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const userId = req.user?.id;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'Old password and new password are required' });
+  }
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Invalid old password' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword }
+    });
+
+    res.json({ message: 'Password changed successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });
   }
