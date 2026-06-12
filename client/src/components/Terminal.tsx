@@ -17,7 +17,7 @@ export default function WebPTY({ vpsId }: { vpsId: string }) {
     term.open(terminalRef.current);
     fitAddon.fit();
 
-    const socket = io('http://localhost:5000');
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
     socket.emit('subscribe_pty', vpsId);
 
     term.onData((data) => {
