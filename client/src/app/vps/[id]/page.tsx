@@ -219,7 +219,7 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
               )}
               {activeTab === 'rustdesk' && (
                 <div className="absolute inset-0 bg-black flex items-center justify-center">
-                   <iframe src={`http://localhost:2111/`} className="w-full h-full border-0" title="Rustdesk Web Viewer"></iframe>
+                   <iframe src={process.env.NEXT_PUBLIC_RUSTDESK_URL || "http://localhost:2111/"} className="w-full h-full border-0" title="Rustdesk Web Viewer"></iframe>
                    {/* In production, URL should point to actual rustdesk web client deployed */}
                 </div>
               )}
