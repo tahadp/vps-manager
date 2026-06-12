@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package vps;
+
+option go_package = "./pb";
+
+service VpsAgent {
+  // Agent sends heartbeat & telemetry to Server
+  rpc StreamTelemetry (stream TelemetryRequest) returns (TelemetryResponse);
+  
+  // Interactive Shell / Web PTY
+  rpc ShellStream (stream ShellMessage) returns (stream ShellMessage);
+  
+  // Commands sent from Server to Agent
+  rpc ExecuteCommand (CommandRequest) returns (CommandResponse);
+}
+
+message TelemetryRequest {
+  string vps_id = 1;
+  float cpu_usage = 2;
+  float ram_usage = 3;
+  float ram_total = 4;
+  float disk_usage = 5;
+  float net_tx = 6;
+  float net_rx = 7;
+  int64 timestamp = 8;
+}
+
+message TelemetryResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message ShellMessage {
+  string vps_id = 1;
+  bytes data = 2; // Can contain stdin/stdout
+}
+
+message CommandRequest {
+  string vps_id = 1;
+  string command = 2; // e.g. "restart", "stop"
+}
+
+message CommandResponse {
+  bool success = 1;
+  string output = 2;
+}
