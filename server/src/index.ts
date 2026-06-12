@@ -7,6 +7,8 @@ import { initWebSocket } from './socket';
 import { authRouter } from './routes/auth';
 import { vpsRouter } from './routes/vps';
 import { adminRouter } from './routes/admin';
+import { settingsRouter } from './routes/settings';
+import { auditRouter } from './routes/audit';
 
 dotenv.config({ path: '../.env' });
 
@@ -17,6 +19,8 @@ app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/vps', vpsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/audit', auditRouter);
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);

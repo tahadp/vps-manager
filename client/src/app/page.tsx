@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import io from "socket.io-client";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -9,6 +10,7 @@ export default function Dashboard() {
   const [metricsMap, setMetricsMap] = useState<Record<string, any>>({});
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -69,6 +71,14 @@ export default function Dashboard() {
               User Management
             </a>
           )}
+          <a href="/audit" className="flex items-center gap-3 px-3 py-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+            Audit Logs
+          </a>
+          <a href="/settings" className="flex items-center gap-3 px-3 py-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            Settings
+          </a>
         </nav>
         <div className="pt-4 border-t border-white/10">
           <button onClick={() => { localStorage.clear(); router.push('/login'); }} className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-red-400 hover:bg-red-400/10 transition-colors text-left">
@@ -86,6 +96,9 @@ export default function Dashboard() {
         <header className="h-16 flex items-center justify-between px-8 border-b border-white/5 z-10 bg-zinc-950/50 backdrop-blur-md">
           <h2 className="text-lg font-medium">Servers</h2>
           <div className="flex items-center gap-4">
+            <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-white/5 transition-colors" title="Toggle Theme">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+            </button>
             <div className="text-sm text-zinc-400">{user?.email}</div>
             <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700"></div>
           </div>
@@ -117,8 +130,8 @@ export default function Dashboard() {
                         </h3>
                         <p className="text-xs text-zinc-400 mt-1">{vps.ipAddress} • {vps.os}</p>
                       </div>
-                      <button className="bg-white/5 hover:bg-white/10 text-white text-xs px-3 py-1.5 rounded-lg border border-white/10 transition-colors">
-                        Connect
+                      <button onClick={() => router.push(`/vps/${vps.id}`)} className="bg-white/5 hover:bg-white/10 text-white text-xs px-3 py-1.5 rounded-lg border border-white/10 transition-colors">
+                        Details
                       </button>
                     </div>
 
