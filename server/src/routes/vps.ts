@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 import { executeCommand, listDirectory, readFile, writeFile } from '../grpcClient';
+import { OsType } from '@prisma/client';
 
 export const vpsRouter = Router();
 
@@ -41,14 +42,19 @@ vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   const { id, name, ipAddress = "Pending", os, userId } = req.body;
   if (!name || !os || !userId) return res.status(400).json({ error: 'Missing required fields' });
   try {
-    const osEnum = os.toUpperCase().includes('WINDOW') ? 'WINDOWS' : 'LINUX';
-    const createData: any = { name, ipAddress, os: osEnum, userId };
+    const osEnum = os.toUpperCase().includes('WINDOW') ? OsType.WINDOWS : OsType.LINUX;
+    const createData: any = { 
+      name, 
+      ipAddress, 
+      os: osEnum, 
+      user: { connect: { id: userId } } 
+    };
     if (id) createData.id = id; // Allow custom ID if provided
     
     const newVps = await prisma.vps.create({ data: createData });
     res.json(newVps);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to add VPS' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to add VPS', details: error.message });
   }
 });
 
@@ -60,7 +66,7 @@ vpsRouter.put('/:id', requireAuth, async (req: AuthRequest, res: any) => {
   try {
     const dataToUpdate: any = { name, ipAddress, status, userId };
     if (os) {
-      dataToUpdate.os = os.toUpperCase().includes('WINDOW') ? 'WINDOWS' : 'LINUX';
+      dataToUpdate.os = os.toUpperCase().includes('WINDOW') ? OsType.WINDOWS : OsType.LINUX;
     }
     const updatedVps = await prisma.vps.update({
       where: { id: id as string },

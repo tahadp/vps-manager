@@ -1,0 +1,273 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/exec"
+	"runtime"
+	"time"
+
+	pb "agent/pb"
+	"agent/telemetry"
+
+	"github.com/creack/pty"
+	"github.com/kardianos/service"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+type AgentServer struct {
+	pb.UnimplementedAgentServiceServer
+	vpsID string
+}
+
+func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest) (*pb.CommandResponse, error) {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", req.Command)
+	} else {
+		cmd = exec.Command("sh", "-c", req.Command)
+	}
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return &pb.CommandResponse{Success: false, Output: fmt.Sprintf("%s: %s", err.Error(), string(out))}, nil
+	}
+	return &pb.CommandResponse{Success: true, Output: string(out)}, nil
+}
+
+func (s *AgentServer) ListDirectory(ctx context.Context, req *pb.DirRequest) (*pb.DirResponse, error) {
+	entries, err := os.ReadDir(req.Path)
+	if err != nil {
+		return &pb.DirResponse{Success: false, Error: err.Error()}, nil
+	}
+
+	var files []*pb.FileItem
+	for _, entry := range entries {
+		info, err := entry.Info()
+		size := int64(0)
+		if err == nil {
+			size = info.Size()
+		}
+		files = append(files, &pb.FileItem{
+			Name:  entry.Name(),
+			IsDir: entry.IsDir(),
+			Size:  size,
+		})
+	}
+	return &pb.DirResponse{Success: true, Files: files}, nil
+}
+
+func (s *AgentServer) ReadFile(ctx context.Context, req *pb.FileRequest) (*pb.FileResponse, error) {
+	data, err := os.ReadFile(req.Path)
+	if err != nil {
+		return &pb.FileResponse{Success: false, Error: err.Error()}, nil
+	}
+	return &pb.FileResponse{Success: true, Content: data}, nil
+}
+
+func (s *AgentServer) WriteFile(ctx context.Context, req *pb.WriteRequest) (*pb.WriteResponse, error) {
+	err := os.WriteFile(req.Path, req.Content, 0644)
+	if err != nil {
+		return &pb.WriteResponse{Success: false, Error: err.Error()}, nil
+	}
+	return &pb.WriteResponse{Success: true}, nil
+}
+
+func (s *AgentServer) ShellStream(stream pb.AgentService_ShellStreamServer) error {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd.exe")
+	} else {
+		cmd = exec.Command("bash")
+	}
+
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return err
+	}
+	defer ptmx.Close()
+
+	go func() {
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				ptmx.Close()
+				break
+			}
+			ptmx.Write(msg.Data)
+		}
+	}()
+
+	buf := make([]byte, 1024)
+	for {
+		n, err := ptmx.Read(buf)
+		if n > 0 {
+			stream.Send(&pb.ShellMessage{
+				VpsId: s.vpsID,
+				Data:  buf[:n],
+			})
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	cmd.Wait()
+	return nil
+}
+
+// APIKeyAuth implements credentials.PerRPCCredentials
+type APIKeyAuth struct {
+	Key string
+}
+
+func (a APIKeyAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{"api_key": a.Key}, nil
+}
+
+func (a APIKeyAuth) RequireTransportSecurity() bool {
+	return false
+}
+
+type program struct {
+	cfg    *Config
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func (p *program) Start(s service.Service) error {
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	go p.run()
+	return nil
+}
+
+func (p *program) run() {
+	log.Println("VPS Agent (Golang) is starting in daemon mode...")
+
+	// 1. Start gRPC Server for Backend -> Agent communication
+	go func() {
+		lis, err := net.Listen("tcp", ":50052")
+		if err != nil {
+			log.Printf("failed to listen: %v", err)
+			return
+		}
+		grpcServer := grpc.NewServer()
+		pb.RegisterAgentServiceServer(grpcServer, &AgentServer{vpsID: p.cfg.VpsID})
+		log.Printf("Agent gRPC server listening at %v", lis.Addr())
+		
+		go func() {
+			<-p.ctx.Done()
+			grpcServer.Stop()
+		}()
+
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Printf("failed to serve: %v", err)
+		}
+	}()
+
+	// 2. Connect to Backend for Telemetry & Screenshots
+	conn, err := grpc.Dial(p.cfg.BackendIP,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(APIKeyAuth{Key: p.cfg.APIKey}),
+	)
+	if err != nil {
+		log.Printf("Did not connect to backend: %v", err)
+		return
+	}
+	defer conn.Close()
+	backendClient := pb.NewBackendServiceClient(conn)
+
+	// Telemetry Loop
+	go func() {
+		for {
+			select {
+			case <-p.ctx.Done():
+				return
+			default:
+			}
+
+			stream, err := backendClient.StreamTelemetry(context.Background())
+			if err != nil {
+				log.Printf("Telemetry stream connect error: %v", err)
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			for {
+				select {
+				case <-p.ctx.Done():
+					return
+				default:
+				}
+
+				metrics, err := telemetry.CollectMetrics()
+				if err != nil {
+					log.Printf("Metrics error: %v", err)
+					time.Sleep(1 * time.Second)
+					continue
+				}
+
+				req := &pb.TelemetryRequest{
+					VpsId:     p.cfg.VpsID,
+					CpuUsage:  float32(metrics.CPUUsage),
+					RamUsage:  float32(metrics.RAMUsage),
+					RamTotal:  float32(metrics.RAMTotal),
+					DiskUsage: float32(metrics.DiskUsage),
+					NetTx:     float32(metrics.NetTx),
+					NetRx:     float32(metrics.NetRx),
+					Timestamp: metrics.Timestamp,
+				}
+				if err := stream.Send(req); err != nil {
+					log.Printf("Telemetry stream send error: %v", err)
+					break // reconnect
+				}
+
+				time.Sleep(1 * time.Second)
+			}
+		}
+	}()
+
+	// Screenshot Loop
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-time.After(30 * time.Second):
+			data, err := telemetry.CaptureScreenBytes()
+			if err != nil {
+				log.Printf("Screenshot capture failed: %v", err)
+				continue
+			}
+			_, err = backendClient.UploadScreenshot(context.Background(), &pb.ScreenshotRequest{
+				VpsId:     p.cfg.VpsID,
+				ImageData: data,
+			})
+			if err != nil {
+				log.Printf("Screenshot upload failed: %v", err)
+			}
+		}
+	}
+}
+
+func (p *program) Stop(s service.Service) error {
+	p.cancel()
+	return nil
+}
+
+func setupService(cfg *Config) (service.Service, error) {
+	svcConfig := &service.Config{
+		Name:        "VPSManagerAgent",
+		DisplayName: "VPS Manager Agent",
+		Description: "Telemetry and remote management agent for VPS Manager.",
+	}
+
+	prg := &program{
+		cfg: cfg,
+	}
+
+	return service.New(prg, svcConfig)
+}
