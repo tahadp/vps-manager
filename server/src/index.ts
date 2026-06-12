@@ -19,9 +19,6 @@ const app = express();
 if (!process.env.JWT_SECRET) {
   throw new Error("FATAL ERROR: JWT_SECRET environment variable is missing.");
 }
-if (!process.env.AGENT_API_KEY) {
-  throw new Error("FATAL ERROR: AGENT_API_KEY environment variable is missing.");
-}
 
 app.use(cors());
 app.use(express.json());
