@@ -20,8 +20,9 @@ model User {
   telegramBotToken String?
   telegramChatId   String?
 
-  vpsList   Vps[]
-  auditLogs AuditLog[]
+  vpsList    Vps[]
+  auditLogs  AuditLog[]
+  alertRules AlertRule[]
 }
 
 model Vps {
@@ -34,7 +35,8 @@ model Vps {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alertRules AlertRule[]
 }
 
 model AuditLog {
@@ -72,4 +74,19 @@ enum VpsState {
   ONLINE
   OFFLINE
   MAINTENANCE
+}
+
+model AlertRule {
+  id          String   @id @default(uuid())
+  userId      String
+  vpsId       String?  
+  metric      String   // "CPU", "RAM", "DISK"
+  condition   String   // ">", "<"
+  threshold   Float    
+  durationMin Int      
+  action      String   // "NOTIFY_ONLY", "RESTART"
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vps         Vps?     @relation(fields: [vpsId], references: [id], onDelete: Cascade)
 }

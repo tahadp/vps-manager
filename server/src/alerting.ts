@@ -17,50 +17,87 @@ export const sendTelegramAlert = async (userId: string, message: string) => {
   }
 };
 
+let activeRules: any[] = [];
+
+const refreshRules = async () => {
+  try {
+    activeRules = await prisma.alertRule.findMany();
+  } catch (err) {
+    console.error('Failed to refresh alert rules', err);
+  }
+};
+
 export const initAlertingEngine = () => {
-  console.log('Alerting Engine Initialized');
+  console.log('Dynamic Alerting Engine Initialized');
+  
+  // Refresh rules every 30 seconds
+  refreshRules();
+  setInterval(refreshRules, 30000);
   
   redisSubscriber.on('pmessage', async (pattern, channel, message) => {
     if (channel.startsWith('telemetry:')) {
       try {
         const data = JSON.parse(message);
         
-        // Fetch VPS to know the owner
         const vps = await prisma.vps.findUnique({ where: { id: data.vpsId } });
         if (!vps) return;
         
-        // Kural 1: Disk Kullanımı > %95
-        if (data.DiskUsage > 95) {
-          const diskKey = `vps_disk_alert:${vps.id}`;
-          const alerted = await redisCache.get(diskKey);
-          if (!alerted) {
-             await sendTelegramAlert(vps.userId, `🚨 UYARI! VPS ${vps.name} (${vps.ipAddress}) Disk Kullanımı kritik seviyede: %${data.DiskUsage.toFixed(2)}`);
-             await redisCache.set(diskKey, '1', 'EX', 3600); // 1 saat boyunca tekrar atmasın
-          }
-        }
-        
-        // Kural 2: CPU Kullanımı > %90 for 10 minutes
-        const cpuKey = `vps_cpu_alert:${vps.id}`;
-        if (data.CPUUsage > 90) {
-          const val = await redisCache.get(cpuKey);
-          if (!val) {
-            await redisCache.set(cpuKey, Date.now().toString());
-          } else {
-            const startTime = parseInt(val, 10);
-            const diffMins = (Date.now() - startTime) / 60000;
-            if (diffMins > 10) {
-               await sendTelegramAlert(vps.userId, `🚨 UYARI! VPS ${vps.name} (${vps.ipAddress}) CPU Kullanımı 10 dakikadır %90 üzerinde! Restart komutu gönderiliyor...`);
-               try {
-                 await executeCommand(vps.id, 'sudo systemctl restart docker || sudo service nginx restart');
-               } catch (cmdErr) {
-                 console.error('Failed to execute recovery command:', cmdErr);
-               }
-               // Reset timer after action
-               await redisCache.del(cpuKey);
+        // Find applicable rules for this VPS (either specifically for this VPS or global for the user)
+        const applicableRules = activeRules.filter(r => 
+          r.userId === vps.userId && (r.vpsId === null || r.vpsId === vps.id)
+        );
+
+        for (const rule of applicableRules) {
+          // Map the metric
+          let metricValue = 0;
+          if (rule.metric === 'CPU') metricValue = data.CPUUsage;
+          else if (rule.metric === 'RAM') metricValue = data.RAMUsage;
+          else if (rule.metric === 'DISK') metricValue = data.DiskUsage;
+          else continue;
+
+          // Check condition
+          let isViolated = false;
+          if (rule.condition === '>') isViolated = metricValue > rule.threshold;
+          else if (rule.condition === '<') isViolated = metricValue < rule.threshold;
+
+          const ruleStateKey = `rule_state:${rule.id}:${vps.id}`;
+          const ruleCooldownKey = `rule_cooldown:${rule.id}:${vps.id}`;
+
+          if (isViolated) {
+            // Check cooldown
+            const inCooldown = await redisCache.get(ruleCooldownKey);
+            if (inCooldown) continue; // Already triggered recently, wait
+
+            // Tracking duration
+            const val = await redisCache.get(ruleStateKey);
+            if (!val) {
+              await redisCache.set(ruleStateKey, Date.now().toString());
+            } else {
+              const startTime = parseInt(val, 10);
+              const diffMins = (Date.now() - startTime) / 60000;
+              
+              if (diffMins >= rule.durationMin) {
+                // Trigger action!
+                const actionMsg = rule.action === 'RESTART' ? "Restarting server..." : "Notification only.";
+                await sendTelegramAlert(vps.userId, `🚨 ALERT! VPS ${vps.name} (${vps.ipAddress}) violated rule: ${rule.metric} ${rule.condition} ${rule.threshold}% for ${rule.durationMin} minutes. Current: ${metricValue.toFixed(1)}%. ${actionMsg}`);
+                
+                if (rule.action === 'RESTART') {
+                  try {
+                    await executeCommand(vps.id, 'sudo systemctl restart docker || sudo service nginx restart');
+                  } catch (cmdErr) {
+                    console.error('Failed to execute rule recovery command:', cmdErr);
+                  }
+                }
+
+                // Reset state and set a 1 hour cooldown so it doesn't spam
+                await redisCache.del(ruleStateKey);
+                await redisCache.set(ruleCooldownKey, '1', 'EX', 3600);
+              }
             }
+          } else {
+            // Metric recovered, reset the tracking timer
+            await redisCache.del(ruleStateKey);
           }
-        } else {
-           await redisCache.del(cpuKey);
         }
       } catch (err) {
         console.error('Error parsing telemetry for alerting', err);
