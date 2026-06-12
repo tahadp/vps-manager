@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { authMiddleware } from '../middlewares/auth';
+import { requireAuth } from '../middlewares/authMiddleware';
 
 const router = Router();
 const prisma = new PrismaClient();
 
 // Get user's rules
-router.get('/', authMiddleware, async (req: any, res) => {
+router.get('/', requireAuth, async (req: any, res) => {
   try {
     const rules = await prisma.alertRule.findMany({
       where: { userId: req.user.id },
@@ -20,7 +20,7 @@ router.get('/', authMiddleware, async (req: any, res) => {
 });
 
 // Create rule
-router.post('/', authMiddleware, async (req: any, res) => {
+router.post('/', requireAuth, async (req: any, res) => {
   try {
     const { vpsId, metric, condition, threshold, durationMin, action } = req.body;
     
@@ -53,7 +53,7 @@ router.post('/', authMiddleware, async (req: any, res) => {
 });
 
 // Delete rule
-router.delete('/:id', authMiddleware, async (req: any, res) => {
+router.delete('/:id', requireAuth, async (req: any, res) => {
   try {
     const rule = await prisma.alertRule.findFirst({
       where: { id: req.params.id, userId: req.user.id }

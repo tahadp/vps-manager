@@ -13,9 +13,9 @@ const checkVpsAccess = async (vpsId: string, user: any) => {
 };
 
 // Log action to DB
-const logAudit = async (userId: string, vpsId: string, action: string, details: string) => {
+const logAudit = async (userId: string, target: string, action: string, details: string) => {
   await prisma.auditLog.create({
-    data: { userId, vpsId, action, details }
+    data: { userId, action, target: `${target} - ${details}` }
   });
 };
 
@@ -50,7 +50,7 @@ vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 
 // Single command execution
 vpsRouter.post('/:id/command', requireAuth, async (req: AuthRequest, res: any) => {
-  const vpsId = req.params.id;
+  const vpsId = req.params.id as string;
   const { command } = req.body;
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
@@ -87,7 +87,7 @@ vpsRouter.post('/bulk/command', requireAuth, async (req: AuthRequest, res: any) 
 
 // List Directory
 vpsRouter.get('/:id/files', requireAuth, async (req: AuthRequest, res: any) => {
-  const vpsId = req.params.id;
+  const vpsId = req.params.id as string;
   const dirPath = (req.query.path as string) || '/';
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
@@ -101,7 +101,7 @@ vpsRouter.get('/:id/files', requireAuth, async (req: AuthRequest, res: any) => {
 
 // Read File
 vpsRouter.get('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
-  const vpsId = req.params.id;
+  const vpsId = req.params.id as string;
   const filePath = req.query.path as string;
   if (!filePath) return res.status(400).json({ error: 'Path required' });
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
@@ -116,7 +116,7 @@ vpsRouter.get('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
 
 // Write File
 vpsRouter.put('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
-  const vpsId = req.params.id;
+  const vpsId = req.params.id as string;
   const { path: filePath, content } = req.body;
   if (!filePath || content === undefined) return res.status(400).json({ error: 'Path and content required' });
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
