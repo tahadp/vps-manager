@@ -38,10 +38,11 @@ vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
 // Add a new VPS
 vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
-  const { id, name, ipAddress, os, userId } = req.body;
-  if (!name || !ipAddress || !os || !userId) return res.status(400).json({ error: 'Missing required fields' });
+  const { id, name, ipAddress = "Pending", os, userId } = req.body;
+  if (!name || !os || !userId) return res.status(400).json({ error: 'Missing required fields' });
   try {
-    const createData: any = { name, ipAddress, os, userId };
+    const osEnum = os.toUpperCase().includes('WINDOW') ? 'WINDOWS' : 'LINUX';
+    const createData: any = { name, ipAddress, os: osEnum, userId };
     if (id) createData.id = id; // Allow custom ID if provided
     
     const newVps = await prisma.vps.create({ data: createData });
@@ -57,9 +58,13 @@ vpsRouter.put('/:id', requireAuth, async (req: AuthRequest, res: any) => {
   const { id } = req.params;
   const { name, ipAddress, os, status, userId } = req.body;
   try {
+    const dataToUpdate: any = { name, ipAddress, status, userId };
+    if (os) {
+      dataToUpdate.os = os.toUpperCase().includes('WINDOW') ? 'WINDOWS' : 'LINUX';
+    }
     const updatedVps = await prisma.vps.update({
       where: { id: id as string },
-      data: { name, ipAddress, os, status, userId }
+      data: dataToUpdate
     });
     res.json(updatedVps);
   } catch (error) {

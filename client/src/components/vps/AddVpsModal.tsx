@@ -17,8 +17,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     id: '', // Optional custom ID
-    ipAddress: '',
-    os: 'Ubuntu 22.04',
+    os: 'Windows Server 2022',
   });
 
   const [successData, setSuccessData] = useState<any>(null);
@@ -63,7 +62,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
 
   const handleClose = () => {
     setSuccessData(null);
-    setFormData({ name: '', id: '', ipAddress: '', os: 'Ubuntu 22.04' });
+    setFormData({ name: '', id: '', os: 'Windows Server 2022' });
     onClose();
   };
 
@@ -166,23 +165,6 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">IP Address</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Network className="w-4 h-4 text-text-muted" />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={formData.ipAddress}
-                  onChange={e => setFormData({...formData, ipAddress: e.target.value})}
-                  className="w-full pl-10 p-2.5 bg-neutral-bg2 border border-border-subtle rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all text-sm"
-                  placeholder="e.g. 192.168.1.100"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
               <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Operating System</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -193,11 +175,11 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
                   onChange={e => setFormData({...formData, os: e.target.value})}
                   className="w-full pl-10 p-2.5 bg-neutral-bg2 border border-border-subtle rounded-xl text-text-primary focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all text-sm appearance-none"
                 >
+                  <option value="Windows Server 2022">Windows Server 2022</option>
                   <option value="Ubuntu 22.04">Ubuntu 22.04</option>
                   <option value="Ubuntu 20.04">Ubuntu 20.04</option>
                   <option value="Debian 12">Debian 12</option>
                   <option value="CentOS 9">CentOS 9</option>
-                  <option value="Windows Server 2022">Windows Server 2022</option>
                   <option value="Other">Other</option>
                 </select>
               </div>
