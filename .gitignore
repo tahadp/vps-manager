@@ -33,3 +33,7 @@ build/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Markdown Docs
+/*.md
+!README.md
