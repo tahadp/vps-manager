@@ -5,7 +5,7 @@ import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
 import { getAgentClient } from './grpcClient';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 let io: Server;
 
@@ -29,6 +29,7 @@ export const initWebSocket = (server: http.Server) => {
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id, 'User:', socket.data.user.email);
     let ptyStream: any = null;
+    let connectedVpsId: string | null = null;
 
     // İstemci belirli bir VPS'in odasına(room) katılmak isterse
     socket.on('subscribe_vps', async (vpsId: string) => {
@@ -58,6 +59,7 @@ export const initWebSocket = (server: http.Server) => {
 
         const agentClient = await getAgentClient(vpsId);
         ptyStream = agentClient.ShellStream();
+        connectedVpsId = vpsId;
         
         ptyStream.on('data', (msg: any) => {
           socket.emit('pty_output', msg.data.toString('utf-8'));
@@ -77,8 +79,8 @@ export const initWebSocket = (server: http.Server) => {
     });
 
     socket.on('pty_input', (data: string) => {
-      if (ptyStream) {
-        ptyStream.write({ data: Buffer.from(data, 'utf-8') });
+      if (ptyStream && connectedVpsId) {
+        ptyStream.write({ vps_id: connectedVpsId, data: Buffer.from(data, 'utf-8') });
       }
     });
 

@@ -10,8 +10,9 @@ import { motion } from "framer-motion";
 import { 
   Server, Cpu, MemoryStick, HardDrive, TerminalSquare, 
   FolderOpen, MonitorPlay, ArrowLeft, RefreshCw, PowerOff,
-  FileText, Folder, Save, AlertCircle
+  FileText, Folder, Save, AlertCircle, LineChart as LineChartIcon
 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 export default function VpsDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -20,6 +21,7 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("terminal");
   const [telemetry, setTelemetry] = useState<any>({});
+  const [chartData, setChartData] = useState<any[]>([]);
   
   // File Manager State
   const [currentPath, setCurrentPath] = useState("/");
@@ -48,6 +50,19 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
       setVps(data);
       setLoading(false);
       initSocket(token);
+      
+      // Mock 24h data
+      const mock = [];
+      const now = new Date();
+      for(let i=24; i>=0; i--) {
+        const time = new Date(now.getTime() - i * 60 * 60 * 1000);
+        mock.push({
+          time: time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+          cpu: Math.floor(Math.random() * 40) + 10,
+          ram: Math.floor(Math.random() * 30) + 40
+        });
+      }
+      setChartData(mock);
     })
     .catch(() => setLoading(false));
 
@@ -236,6 +251,14 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
               Remote Desktop
               {activeTab === 'rustdesk' && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
             </button>
+            <button 
+              onClick={() => setActiveTab('chart')} 
+              className={`flex items-center gap-2 px-6 py-3.5 text-sm font-medium transition-colors relative ${activeTab === 'chart' ? 'text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-neutral-bg2'}`}
+            >
+              <LineChartIcon className="w-4 h-4" />
+              Performance
+              {activeTab === 'chart' && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
+            </button>
           </div>
           
           {/* Tab Contents */}
@@ -326,6 +349,29 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
                    className="w-full h-full border-0" 
                    title="Rustdesk Web Viewer"
                  />
+              </div>
+            )}
+
+            {/* Performance Chart */}
+            {activeTab === 'chart' && (
+              <div className="absolute inset-0 bg-neutral-bg1 flex flex-col p-6">
+                <h2 className="text-lg font-semibold text-text-primary mb-6">Resource Usage (Last 24h)</h2>
+                <div className="flex-1 w-full h-full min-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+                      <XAxis dataKey="time" stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} unit="%" />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px' }}
+                        itemStyle={{ color: '#f4f4f5' }}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="cpu" name="CPU Usage" stroke="#8251EE" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                      <Line type="monotone" dataKey="ram" name="RAM Usage" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             )}
           </div>

@@ -67,7 +67,14 @@ export function Sidebar() {
       </div>
 
       <div className="mt-auto">
-        <button className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm font-medium text-text-secondary hover:text-status-error hover:bg-status-error/10 transition-colors">
+        <button 
+          onClick={() => {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+          }}
+          className="flex items-center gap-3 px-3 py-2 w-full rounded-lg text-sm font-medium text-text-secondary hover:text-status-error hover:bg-status-error/10 transition-colors"
+        >
           <LogOut className="w-5 h-5" />
           Logout
         </button>

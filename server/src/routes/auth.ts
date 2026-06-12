@@ -6,7 +6,7 @@ import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 
 export const authRouter = Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret';
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 authRouter.post('/register', async (req, res) => {
   const { email, username, password } = req.body;

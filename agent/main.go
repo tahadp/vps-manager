@@ -1,24 +1,42 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"time"
 
 	pb "agent/pb"
 	"agent/telemetry"
 
+	"github.com/creack/pty"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+var (
+	vpsID     = flag.String("vps-id", os.Getenv("VPS_ID"), "VPS ID")
+	backendIP = flag.String("backend-ip", os.Getenv("BACKEND_IP"), "Backend IP Address")
+	apiKey    = flag.String("api-key", os.Getenv("API_KEY"), "API Key for gRPC Auth")
+)
+
+// APIKeyAuth implements credentials.PerRPCCredentials
+type APIKeyAuth struct {
+	Key string
+}
+
+func (a APIKeyAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{"api_key": a.Key}, nil
+}
+
+func (a APIKeyAuth) RequireTransportSecurity() bool {
+	return false
+}
 
 // AgentServer implements pb.AgentServiceServer
 type AgentServer struct {
@@ -86,39 +104,31 @@ func (s *AgentServer) ShellStream(stream pb.AgentService_ShellStreamServer) erro
 		cmd = exec.Command("bash")
 	}
 
-	stdin, err := cmd.StdinPipe()
+	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return err
 	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = cmd.Stdout // Merge stderr to stdout
+	defer ptmx.Close()
 
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-
-	// Read from stream -> Write to stdin
+	// Read from stream -> Write to pty
 	go func() {
 		for {
 			msg, err := stream.Recv()
 			if err != nil {
-				stdin.Close()
+				ptmx.Close()
 				break
 			}
-			stdin.Write(msg.Data)
+			ptmx.Write(msg.Data)
 		}
 	}()
 
-	// Read from stdout -> Write to stream
+	// Read from pty -> Write to stream
 	buf := make([]byte, 1024)
 	for {
-		n, err := stdout.Read(buf)
+		n, err := ptmx.Read(buf)
 		if n > 0 {
 			stream.Send(&pb.ShellMessage{
-				VpsId: "agent",
+				VpsId: *vpsID,
 				Data:  buf[:n],
 			})
 		}
@@ -132,13 +142,23 @@ func (s *AgentServer) ShellStream(stream pb.AgentService_ShellStreamServer) erro
 }
 
 func takeScreenshot() []byte {
-	// Görüntü alma işlemi için bir kütüphane kullanılmalı (örn: github.com/kbinani/screenshot).
-	// Burada demo amaçlı boş byte dizisi dönüyoruz veya basit bir CLI aracına call atabiliriz.
-	return []byte("fake_screenshot_data")
+	data, err := telemetry.CaptureScreenBytes()
+	if err != nil {
+		log.Printf("Screenshot capture failed: %v", err)
+		return []byte("fake_screenshot_data")
+	}
+	return data
 }
 
 func main() {
-	vpsID := "x0o0ckog4cco4gco0sk8wk8w" // Fake UUID for testing, match it with DB if testing locally
+	flag.Parse()
+
+	if *vpsID == "" {
+		*vpsID = "x0o0ckog4cco4gco0sk8wk8w" // Default fallback
+	}
+	if *backendIP == "" {
+		*backendIP = "127.0.0.1:50051"
+	}
 
 	log.Println("VPS Agent (Golang) is starting...")
 
@@ -157,7 +177,10 @@ func main() {
 	}()
 
 	// 2. Connect to Backend for Telemetry & Screenshots
-	conn, err := grpc.Dial("127.0.0.1:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(*backendIP, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithPerRPCCredentials(APIKeyAuth{Key: *apiKey}),
+	)
 	if err != nil {
 		log.Fatalf("Did not connect to backend: %v", err)
 	}
@@ -167,31 +190,38 @@ func main() {
 	// Telemetry Loop
 	go func() {
 		for {
-			metrics, err := telemetry.CollectMetrics()
+			stream, err := backendClient.StreamTelemetry(context.Background())
 			if err != nil {
-				log.Printf("Metrics error: %v", err)
-				time.Sleep(1 * time.Second)
+				log.Printf("Telemetry stream connect error: %v", err)
+				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			// Stream telemetry
-			stream, err := backendClient.StreamTelemetry(context.Background())
-			if err == nil {
+			for {
+				metrics, err := telemetry.CollectMetrics()
+				if err != nil {
+					log.Printf("Metrics error: %v", err)
+					time.Sleep(1 * time.Second)
+					continue
+				}
+
 				req := &pb.TelemetryRequest{
-					VpsId:     vpsID,
+					VpsId:     *vpsID,
 					CpuUsage:  float32(metrics.CPUUsage),
 					RamUsage:  float32(metrics.RAMUsage),
-					RamTotal:  float32(100), // Fake
-					DiskUsage: 50.0,
+					RamTotal:  float32(metrics.RAMTotal),
+					DiskUsage: float32(metrics.DiskUsage),
 					NetTx:     float32(metrics.NetTx),
-					NetRx:     0.0,
-					Timestamp: time.Now().Unix(),
+					NetRx:     float32(metrics.NetRx),
+					Timestamp: metrics.Timestamp,
 				}
-				stream.Send(req)
-				stream.CloseAndRecv() // Close immediately since we just send one per interval and reconnect, or keep alive
+				if err := stream.Send(req); err != nil {
+					log.Printf("Telemetry stream send error: %v", err)
+					break // reconnect
+				}
+				
+				time.Sleep(1 * time.Second)
 			}
-			
-			time.Sleep(1 * time.Second)
 		}
 	}()
 
@@ -200,7 +230,7 @@ func main() {
 		time.Sleep(30 * time.Second) // Every 30 seconds
 		data := takeScreenshot()
 		_, err := backendClient.UploadScreenshot(context.Background(), &pb.ScreenshotRequest{
-			VpsId:     vpsID,
+			VpsId:     *vpsID,
 			ImageData: data,
 		})
 		if err != nil {

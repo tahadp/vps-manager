@@ -38,13 +38,44 @@ vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
 // Add a new VPS
 vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
-  const { name, ipAddress, os, userId } = req.body;
+  const { id, name, ipAddress, os, userId } = req.body;
   if (!name || !ipAddress || !os || !userId) return res.status(400).json({ error: 'Missing required fields' });
   try {
-    const newVps = await prisma.vps.create({ data: { name, ipAddress, os, userId } });
+    const createData: any = { name, ipAddress, os, userId };
+    if (id) createData.id = id; // Allow custom ID if provided
+    
+    const newVps = await prisma.vps.create({ data: createData });
     res.json(newVps);
   } catch (error) {
     res.status(500).json({ error: 'Failed to add VPS' });
+  }
+});
+
+// Update a VPS
+vpsRouter.put('/:id', requireAuth, async (req: AuthRequest, res: any) => {
+  if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can update VPS properties' });
+  const { id } = req.params;
+  const { name, ipAddress, os, status, userId } = req.body;
+  try {
+    const updatedVps = await prisma.vps.update({
+      where: { id: id as string },
+      data: { name, ipAddress, os, status, userId }
+    });
+    res.json(updatedVps);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update VPS' });
+  }
+});
+
+// Delete a VPS
+vpsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res: any) => {
+  if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can delete VPS' });
+  const { id } = req.params;
+  try {
+    await prisma.vps.delete({ where: { id: id as string } });
+    res.json({ message: 'VPS deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete VPS' });
   }
 });
 

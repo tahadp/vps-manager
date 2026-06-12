@@ -10,10 +10,19 @@ import { adminRouter } from './routes/admin';
 import { settingsRouter } from './routes/settings';
 import { auditRouter } from './routes/audit';
 import { rulesRouter } from './routes/rules';
+import { initAlertingEngine } from './alerting';
 
 dotenv.config({ path: '../.env' });
 
 const app = express();
+
+if (!process.env.JWT_SECRET) {
+  throw new Error("FATAL ERROR: JWT_SECRET environment variable is missing.");
+}
+if (!process.env.AGENT_API_KEY) {
+  throw new Error("FATAL ERROR: AGENT_API_KEY environment variable is missing.");
+}
+
 app.use(cors());
 app.use(express.json());
 
@@ -36,4 +45,5 @@ initWebSocket(server);
 server.listen(PORT, () => {
   console.log(`HTTP/WebSocket Server is running on port ${PORT}`);
   startGrpcServer();
+  initAlertingEngine();
 });

@@ -42,6 +42,17 @@ export const initAlertingEngine = () => {
         const vps = await prisma.vps.findUnique({ where: { id: data.vpsId } });
         if (!vps) return;
         
+        // Save HistoricalMetric
+        await prisma.historicalMetric.create({
+          data: {
+            vpsId: vps.id,
+            cpu: data.CPUUsage,
+            ram: data.RAMUsage,
+            timestamp: new Date(data.Timestamp * 1000 || Date.now()) // Assuming Timestamp is in seconds, fallback to Date.now
+          }
+        });
+
+        
         // Find applicable rules for this VPS (either specifically for this VPS or global for the user)
         const applicableRules = activeRules.filter(r => 
           r.userId === vps.userId && (r.vpsId === null || r.vpsId === vps.id)
@@ -81,11 +92,15 @@ export const initAlertingEngine = () => {
                 const actionMsg = rule.action === 'RESTART' ? "Restarting server..." : "Notification only.";
                 await sendTelegramAlert(vps.userId, `🚨 ALERT! VPS ${vps.name} (${vps.ipAddress}) violated rule: ${rule.metric} ${rule.condition} ${rule.threshold}% for ${rule.durationMin} minutes. Current: ${metricValue.toFixed(1)}%. ${actionMsg}`);
                 
-                if (rule.action === 'RESTART') {
-                  try {
-                    await executeCommand(vps.id, 'sudo systemctl restart docker || sudo service nginx restart');
-                  } catch (cmdErr) {
-                    console.error('Failed to execute rule recovery command:', cmdErr);
+                if (rule.action === 'RESTART' || rule.action === 'CUSTOM_SCRIPT') {
+                  if (rule.customScript) {
+                    try {
+                      await executeCommand(vps.id, rule.customScript);
+                    } catch (cmdErr) {
+                      console.error('Failed to execute custom script:', cmdErr);
+                    }
+                  } else {
+                     console.log('No custom script defined for action, skipping execution.');
                   }
                 }
 

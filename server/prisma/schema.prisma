@@ -32,6 +32,7 @@ model Vps {
   ipAddress String
   os        OsType
   status    VpsState @default(OFFLINE)
+  apiKey    String   @default(uuid()) @unique
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -85,9 +86,20 @@ model AlertRule {
   condition   String   // ">", "<"
   threshold   Float    
   durationMin Int      
-  action      String   // "NOTIFY_ONLY", "RESTART"
+  action      String   // "NOTIFY_ONLY", "RESTART", "CUSTOM_SCRIPT"
+  customScript String? // The script to run if action is CUSTOM_SCRIPT
   createdAt   DateTime @default(now())
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   vps         Vps?     @relation(fields: [vpsId], references: [id], onDelete: Cascade)
+}
+
+model HistoricalMetric {
+  id        String   @id @default(uuid())
+  vpsId     String
+  cpu       Float
+  ram       Float
+  timestamp DateTime @default(now())
+
+  @@index([vpsId, timestamp])
 }

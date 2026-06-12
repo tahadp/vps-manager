@@ -3,6 +3,7 @@
 import React, { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { CommandPalette } from '../CommandPalette';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 
@@ -38,6 +39,7 @@ export function AppShell({ children }: AppShellProps) {
           </AnimatePresence>
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

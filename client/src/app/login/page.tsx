@@ -6,6 +6,7 @@ import { Mail, Lock, User, ShieldCheck, ArrowRight, Server, TerminalSquare, Aler
 
 export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState(''); // for register
   const [username, setUsername] = useState(''); // for register
@@ -21,6 +22,13 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setMsg('');
+
+    if (isForgotPassword) {
+      setMsg('If an account exists, a password reset link has been sent.');
+      setIsForgotPassword(false);
+      return;
+    }
+
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
     
     // Email verification stub check
@@ -113,12 +121,14 @@ export default function Login() {
           >
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-text-primary mb-2">
-                {isRegister ? 'Create an account' : 'Welcome back'}
+                {isForgotPassword ? 'Reset Password' : isRegister ? 'Create an account' : 'Welcome back'}
               </h2>
               <p className="text-text-secondary text-sm">
-                {isRegister 
-                  ? 'Enter your details to request access to the platform.' 
-                  : 'Enter your credentials to access your dashboard.'}
+                {isForgotPassword 
+                  ? 'Enter your email address to receive a reset link.'
+                  : isRegister 
+                    ? 'Enter your details to request access to the platform.' 
+                    : 'Enter your credentials to access your dashboard.'}
               </p>
             </div>
 
@@ -148,7 +158,26 @@ export default function Login() {
             </AnimatePresence>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {!isRegister ? (
+              {isForgotPassword ? (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email Address</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <Mail className="w-4 h-4 text-text-muted" />
+                      </div>
+                      <input 
+                        type="email" 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                        required
+                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+                        placeholder="name@company.com"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : !isRegister ? (
                 // Login Fields
                 <>
                   <div className="space-y-1.5">
@@ -171,7 +200,11 @@ export default function Login() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
-                      <button type="button" className="text-xs text-brand hover:text-brand-light transition-colors">
+                      <button 
+                        type="button" 
+                        onClick={() => { setIsForgotPassword(true); setError(''); setMsg(''); }}
+                        className="text-xs text-brand hover:text-brand-light transition-colors"
+                      >
                         Forgot Password?
                       </button>
                     </div>
@@ -266,25 +299,29 @@ export default function Login() {
                 type="submit"
                 className="w-full group flex items-center justify-center gap-2 p-3 mt-4 bg-brand hover:bg-brand-hover text-white font-medium rounded-xl transition-all active:scale-[0.98] shadow-glow"
               >
-                {isRegister ? (isVerifying ? 'Verify & Continue' : 'Create Account') : 'Sign In'}
+                {isForgotPassword ? 'Send Reset Link' : isRegister ? (isVerifying ? 'Verify & Continue' : 'Create Account') : 'Sign In'}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
             </form>
 
             <div className="mt-8 pt-6 border-t border-border-subtle text-center">
               <p className="text-sm text-text-secondary">
-                {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
+                {isForgotPassword ? 'Remember your password?' : isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
                 <button 
                   type="button"
                   onClick={() => { 
-                    setIsRegister(!isRegister); 
+                    if (isForgotPassword) {
+                      setIsForgotPassword(false);
+                    } else {
+                      setIsRegister(!isRegister); 
+                    }
                     setError(''); 
                     setMsg(''); 
                     setIsVerifying(false);
                   }} 
                   className="text-brand hover:text-brand-light font-medium transition-colors"
                 >
-                  {isRegister ? 'Sign In' : 'Sign up'}
+                  {isForgotPassword ? 'Sign In' : isRegister ? 'Sign In' : 'Sign up'}
                 </button>
               </p>
             </div>

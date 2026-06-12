@@ -17,8 +17,31 @@ const vpsPackage = protoDescriptor.vps;
 
 const server = new grpc.Server();
 
+import { prisma } from './prisma';
+
+const checkApiKey = async (call: any, callback?: any) => {
+  const apiKey = call.metadata.get('x-api-key')[0];
+  if (!apiKey) {
+    const err = { code: grpc.status.UNAUTHENTICATED, details: 'Missing API Key' };
+    if (callback) callback(err); else call.emit('error', err);
+    return false;
+  }
+  
+  const vps = await prisma.vps.findUnique({ where: { apiKey } });
+  if (!vps) {
+    const err = { code: grpc.status.UNAUTHENTICATED, details: 'Invalid API Key' };
+    if (callback) callback(err); else call.emit('error', err);
+    return false;
+  }
+  
+  // Attach VPS ID to the call context so we can use it securely
+  call.authenticatedVpsId = vps.id;
+  return true;
+};
+
 server.addService(vpsPackage.BackendService.service, {
-  StreamTelemetry: (call: any) => {
+  StreamTelemetry: async (call: any) => {
+    if (!(await checkApiKey(call))) return;
     call.on('data', (request: any) => {
       // console.log(`[Telemetry] VPS ID: ${request.vps_id} - CPU: ${request.cpu_usage}%`);
       // Telemetry processing logic
@@ -40,7 +63,8 @@ server.addService(vpsPackage.BackendService.service, {
       call.end();
     });
   },
-  UploadScreenshot: (call: any, callback: any) => {
+  UploadScreenshot: async (call: any, callback: any) => {
+    if (!(await checkApiKey(call, callback))) return;
     // console.log(`[Screenshot] Received for VPS ID: ${call.request.vps_id}`);
     const redisPublisher = require('./redis').redisPublisher;
     if (redisPublisher) {

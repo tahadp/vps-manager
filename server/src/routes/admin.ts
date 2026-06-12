@@ -24,6 +24,11 @@ adminRouter.put('/users/:id/status', async (req, res) => {
     return res.status(400).json({ error: 'Invalid status' });
   }
 
+  const userReq = req as AuthRequest;
+  if (id === userReq.user?.id) {
+    return res.status(403).json({ error: 'Cannot change your own status' });
+  }
+
   try {
     const updatedUser = await prisma.user.update({
       where: { id },
