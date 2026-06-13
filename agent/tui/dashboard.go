@@ -12,6 +12,7 @@ type DashboardAction int
 
 const (
 	ActionStartForeground DashboardAction = iota
+	ActionMonitorMetrics
 	ActionInstallService
 	ActionUninstallService
 	ActionStartService
@@ -38,6 +39,7 @@ func InitialDashboardModel(status string, actionCb func(DashboardAction) (string
 	return dashboardModel{
 		choices: []string{
 			"▶ Start Agent (Foreground)",
+			"📊 Monitor Metrics (Live)",
 			"📦 Install Service",
 			"🗑️  Uninstall Service",
 			"✅ Start Service",
@@ -46,6 +48,7 @@ func InitialDashboardModel(status string, actionCb func(DashboardAction) (string
 		},
 		actions: []DashboardAction{
 			ActionStartForeground,
+			ActionMonitorMetrics,
 			ActionInstallService,
 			ActionUninstallService,
 			ActionStartService,
@@ -95,6 +98,9 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.action = ActionStartForeground
 				m.done = true
 				return m, tea.Quit
+			} else if selected == ActionMonitorMetrics {
+				RunMonitor()
+				return m, nil
 			}
 
 			// Service action'ları async çalıştır
