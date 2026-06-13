@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.35.1
-// source: proto/vps.proto
+// source: vps.proto
 
 package pb
 
@@ -31,13 +31,14 @@ type TelemetryRequest struct {
 	NetTx         float32                `protobuf:"fixed32,6,opt,name=net_tx,json=netTx,proto3" json:"net_tx,omitempty"`
 	NetRx         float32                `protobuf:"fixed32,7,opt,name=net_rx,json=netRx,proto3" json:"net_rx,omitempty"`
 	Timestamp     int64                  `protobuf:"varint,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	DiskTotal     float32                `protobuf:"fixed32,9,opt,name=disk_total,json=diskTotal,proto3" json:"disk_total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TelemetryRequest) Reset() {
 	*x = TelemetryRequest{}
-	mi := &file_proto_vps_proto_msgTypes[0]
+	mi := &file_vps_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49,7 +50,7 @@ func (x *TelemetryRequest) String() string {
 func (*TelemetryRequest) ProtoMessage() {}
 
 func (x *TelemetryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[0]
+	mi := &file_vps_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62,7 +63,7 @@ func (x *TelemetryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetryRequest.ProtoReflect.Descriptor instead.
 func (*TelemetryRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{0}
+	return file_vps_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *TelemetryRequest) GetVpsId() string {
@@ -121,6 +122,13 @@ func (x *TelemetryRequest) GetTimestamp() int64 {
 	return 0
 }
 
+func (x *TelemetryRequest) GetDiskTotal() float32 {
+	if x != nil {
+		return x.DiskTotal
+	}
+	return 0
+}
+
 type TelemetryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -131,7 +139,7 @@ type TelemetryResponse struct {
 
 func (x *TelemetryResponse) Reset() {
 	*x = TelemetryResponse{}
-	mi := &file_proto_vps_proto_msgTypes[1]
+	mi := &file_vps_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -143,7 +151,7 @@ func (x *TelemetryResponse) String() string {
 func (*TelemetryResponse) ProtoMessage() {}
 
 func (x *TelemetryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[1]
+	mi := &file_vps_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -156,7 +164,7 @@ func (x *TelemetryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TelemetryResponse.ProtoReflect.Descriptor instead.
 func (*TelemetryResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{1}
+	return file_vps_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *TelemetryResponse) GetSuccess() bool {
@@ -183,7 +191,7 @@ type ShellMessage struct {
 
 func (x *ShellMessage) Reset() {
 	*x = ShellMessage{}
-	mi := &file_proto_vps_proto_msgTypes[2]
+	mi := &file_vps_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -195,7 +203,7 @@ func (x *ShellMessage) String() string {
 func (*ShellMessage) ProtoMessage() {}
 
 func (x *ShellMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[2]
+	mi := &file_vps_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -208,7 +216,7 @@ func (x *ShellMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShellMessage.ProtoReflect.Descriptor instead.
 func (*ShellMessage) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{2}
+	return file_vps_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ShellMessage) GetVpsId() string {
@@ -226,9 +234,9 @@ func (x *ShellMessage) GetData() []byte {
 }
 
 type CommandRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state          protoimpl.MessageState `protogen:"open.v1"`
 	VpsId          string                 `protobuf:"bytes,1,opt,name=vps_id,json=vpsId,proto3" json:"vps_id,omitempty"`
-	Command        string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"` // e.g. "restart", "stop"
+	Command        string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`                                      // e.g. "restart", "stop"
 	TimeoutSeconds int32                  `protobuf:"varint,3,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"` // Timeout in seconds (default 30)
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -236,7 +244,7 @@ type CommandRequest struct {
 
 func (x *CommandRequest) Reset() {
 	*x = CommandRequest{}
-	mi := &file_proto_vps_proto_msgTypes[3]
+	mi := &file_vps_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -248,7 +256,7 @@ func (x *CommandRequest) String() string {
 func (*CommandRequest) ProtoMessage() {}
 
 func (x *CommandRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[3]
+	mi := &file_vps_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -261,7 +269,7 @@ func (x *CommandRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandRequest.ProtoReflect.Descriptor instead.
 func (*CommandRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{3}
+	return file_vps_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CommandRequest) GetVpsId() string {
@@ -295,7 +303,7 @@ type CommandResponse struct {
 
 func (x *CommandResponse) Reset() {
 	*x = CommandResponse{}
-	mi := &file_proto_vps_proto_msgTypes[4]
+	mi := &file_vps_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -307,7 +315,7 @@ func (x *CommandResponse) String() string {
 func (*CommandResponse) ProtoMessage() {}
 
 func (x *CommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[4]
+	mi := &file_vps_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -320,7 +328,7 @@ func (x *CommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResponse.ProtoReflect.Descriptor instead.
 func (*CommandResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{4}
+	return file_vps_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CommandResponse) GetSuccess() bool {
@@ -347,7 +355,7 @@ type DirRequest struct {
 
 func (x *DirRequest) Reset() {
 	*x = DirRequest{}
-	mi := &file_proto_vps_proto_msgTypes[5]
+	mi := &file_vps_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +367,7 @@ func (x *DirRequest) String() string {
 func (*DirRequest) ProtoMessage() {}
 
 func (x *DirRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[5]
+	mi := &file_vps_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +380,7 @@ func (x *DirRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirRequest.ProtoReflect.Descriptor instead.
 func (*DirRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{5}
+	return file_vps_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DirRequest) GetVpsId() string {
@@ -400,7 +408,7 @@ type FileItem struct {
 
 func (x *FileItem) Reset() {
 	*x = FileItem{}
-	mi := &file_proto_vps_proto_msgTypes[6]
+	mi := &file_vps_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -412,7 +420,7 @@ func (x *FileItem) String() string {
 func (*FileItem) ProtoMessage() {}
 
 func (x *FileItem) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[6]
+	mi := &file_vps_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -425,7 +433,7 @@ func (x *FileItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileItem.ProtoReflect.Descriptor instead.
 func (*FileItem) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{6}
+	return file_vps_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *FileItem) GetName() string {
@@ -460,7 +468,7 @@ type DirResponse struct {
 
 func (x *DirResponse) Reset() {
 	*x = DirResponse{}
-	mi := &file_proto_vps_proto_msgTypes[7]
+	mi := &file_vps_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +480,7 @@ func (x *DirResponse) String() string {
 func (*DirResponse) ProtoMessage() {}
 
 func (x *DirResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[7]
+	mi := &file_vps_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +493,7 @@ func (x *DirResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DirResponse.ProtoReflect.Descriptor instead.
 func (*DirResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{7}
+	return file_vps_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DirResponse) GetSuccess() bool {
@@ -519,7 +527,7 @@ type FileRequest struct {
 
 func (x *FileRequest) Reset() {
 	*x = FileRequest{}
-	mi := &file_proto_vps_proto_msgTypes[8]
+	mi := &file_vps_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -531,7 +539,7 @@ func (x *FileRequest) String() string {
 func (*FileRequest) ProtoMessage() {}
 
 func (x *FileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[8]
+	mi := &file_vps_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -544,7 +552,7 @@ func (x *FileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileRequest.ProtoReflect.Descriptor instead.
 func (*FileRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{8}
+	return file_vps_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FileRequest) GetVpsId() string {
@@ -572,7 +580,7 @@ type FileResponse struct {
 
 func (x *FileResponse) Reset() {
 	*x = FileResponse{}
-	mi := &file_proto_vps_proto_msgTypes[9]
+	mi := &file_vps_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -584,7 +592,7 @@ func (x *FileResponse) String() string {
 func (*FileResponse) ProtoMessage() {}
 
 func (x *FileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[9]
+	mi := &file_vps_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -597,7 +605,7 @@ func (x *FileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileResponse.ProtoReflect.Descriptor instead.
 func (*FileResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{9}
+	return file_vps_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *FileResponse) GetSuccess() bool {
@@ -632,7 +640,7 @@ type WriteRequest struct {
 
 func (x *WriteRequest) Reset() {
 	*x = WriteRequest{}
-	mi := &file_proto_vps_proto_msgTypes[10]
+	mi := &file_vps_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -644,7 +652,7 @@ func (x *WriteRequest) String() string {
 func (*WriteRequest) ProtoMessage() {}
 
 func (x *WriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[10]
+	mi := &file_vps_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -657,7 +665,7 @@ func (x *WriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteRequest.ProtoReflect.Descriptor instead.
 func (*WriteRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{10}
+	return file_vps_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *WriteRequest) GetVpsId() string {
@@ -691,7 +699,7 @@ type WriteResponse struct {
 
 func (x *WriteResponse) Reset() {
 	*x = WriteResponse{}
-	mi := &file_proto_vps_proto_msgTypes[11]
+	mi := &file_vps_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -703,7 +711,7 @@ func (x *WriteResponse) String() string {
 func (*WriteResponse) ProtoMessage() {}
 
 func (x *WriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[11]
+	mi := &file_vps_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -716,7 +724,7 @@ func (x *WriteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteResponse.ProtoReflect.Descriptor instead.
 func (*WriteResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{11}
+	return file_vps_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *WriteResponse) GetSuccess() bool {
@@ -743,7 +751,7 @@ type ScreenshotRequest struct {
 
 func (x *ScreenshotRequest) Reset() {
 	*x = ScreenshotRequest{}
-	mi := &file_proto_vps_proto_msgTypes[12]
+	mi := &file_vps_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -755,7 +763,7 @@ func (x *ScreenshotRequest) String() string {
 func (*ScreenshotRequest) ProtoMessage() {}
 
 func (x *ScreenshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[12]
+	mi := &file_vps_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -768,7 +776,7 @@ func (x *ScreenshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenshotRequest.ProtoReflect.Descriptor instead.
 func (*ScreenshotRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{12}
+	return file_vps_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ScreenshotRequest) GetVpsId() string {
@@ -794,7 +802,7 @@ type ScreenshotResponse struct {
 
 func (x *ScreenshotResponse) Reset() {
 	*x = ScreenshotResponse{}
-	mi := &file_proto_vps_proto_msgTypes[13]
+	mi := &file_vps_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -806,7 +814,7 @@ func (x *ScreenshotResponse) String() string {
 func (*ScreenshotResponse) ProtoMessage() {}
 
 func (x *ScreenshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[13]
+	mi := &file_vps_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -819,7 +827,7 @@ func (x *ScreenshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScreenshotResponse.ProtoReflect.Descriptor instead.
 func (*ScreenshotResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{13}
+	return file_vps_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ScreenshotResponse) GetSuccess() bool {
@@ -839,7 +847,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_proto_vps_proto_msgTypes[14]
+	mi := &file_vps_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -851,7 +859,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[14]
+	mi := &file_vps_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -864,7 +872,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{14}
+	return file_vps_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *HeartbeatRequest) GetVpsId() string {
@@ -890,7 +898,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_proto_vps_proto_msgTypes[15]
+	mi := &file_vps_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -902,7 +910,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_proto_vps_proto_msgTypes[15]
+	mi := &file_vps_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -915,7 +923,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_proto_vps_proto_rawDescGZIP(), []int{15}
+	return file_vps_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *HeartbeatResponse) GetSuccess() bool {
@@ -925,11 +933,11 @@ func (x *HeartbeatResponse) GetSuccess() bool {
 	return false
 }
 
-var File_proto_vps_proto protoreflect.FileDescriptor
+var File_vps_proto protoreflect.FileDescriptor
 
-const file_proto_vps_proto_rawDesc = "" +
+const file_vps_proto_rawDesc = "" +
 	"\n" +
-	"\x0fproto/vps.proto\x12\x03vps\"\xeb\x01\n" +
+	"\tvps.proto\x12\x03vps\"\x8a\x02\n" +
 	"\x10TelemetryRequest\x12\x15\n" +
 	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\x12\x1b\n" +
 	"\tcpu_usage\x18\x02 \x01(\x02R\bcpuUsage\x12\x1b\n" +
@@ -939,16 +947,19 @@ const file_proto_vps_proto_rawDesc = "" +
 	"disk_usage\x18\x05 \x01(\x02R\tdiskUsage\x12\x15\n" +
 	"\x06net_tx\x18\x06 \x01(\x02R\x05netTx\x12\x15\n" +
 	"\x06net_rx\x18\a \x01(\x02R\x05netRx\x12\x1c\n" +
-	"\ttimestamp\x18\b \x01(\x03R\ttimestamp\"G\n" +
+	"\ttimestamp\x18\b \x01(\x03R\ttimestamp\x12\x1d\n" +
+	"\n" +
+	"disk_total\x18\t \x01(\x02R\tdiskTotal\"G\n" +
 	"\x11TelemetryResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"9\n" +
 	"\fShellMessage\x12\x15\n" +
 	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\"A\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"j\n" +
 	"\x0eCommandRequest\x12\x15\n" +
 	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\x12\x18\n" +
-	"\acommand\x18\x02 \x01(\tR\acommand\"C\n" +
+	"\acommand\x18\x02 \x01(\tR\acommand\x12'\n" +
+	"\x0ftimeout_seconds\x18\x03 \x01(\x05R\x0etimeoutSeconds\"C\n" +
 	"\x0fCommandResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x16\n" +
 	"\x06output\x18\x02 \x01(\tR\x06output\"7\n" +
@@ -1001,19 +1012,19 @@ const file_proto_vps_proto_rawDesc = "" +
 	"\vShellStream\x12\x11.vps.ShellMessage\x1a\x11.vps.ShellMessage(\x010\x01B\x06Z\x04./pbb\x06proto3"
 
 var (
-	file_proto_vps_proto_rawDescOnce sync.Once
-	file_proto_vps_proto_rawDescData []byte
+	file_vps_proto_rawDescOnce sync.Once
+	file_vps_proto_rawDescData []byte
 )
 
-func file_proto_vps_proto_rawDescGZIP() []byte {
-	file_proto_vps_proto_rawDescOnce.Do(func() {
-		file_proto_vps_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_proto_vps_proto_rawDesc), len(file_proto_vps_proto_rawDesc)))
+func file_vps_proto_rawDescGZIP() []byte {
+	file_vps_proto_rawDescOnce.Do(func() {
+		file_vps_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_vps_proto_rawDesc), len(file_vps_proto_rawDesc)))
 	})
-	return file_proto_vps_proto_rawDescData
+	return file_vps_proto_rawDescData
 }
 
-var file_proto_vps_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
-var file_proto_vps_proto_goTypes = []any{
+var file_vps_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_vps_proto_goTypes = []any{
 	(*TelemetryRequest)(nil),   // 0: vps.TelemetryRequest
 	(*TelemetryResponse)(nil),  // 1: vps.TelemetryResponse
 	(*ShellMessage)(nil),       // 2: vps.ShellMessage
@@ -1031,7 +1042,7 @@ var file_proto_vps_proto_goTypes = []any{
 	(*HeartbeatRequest)(nil),   // 14: vps.HeartbeatRequest
 	(*HeartbeatResponse)(nil),  // 15: vps.HeartbeatResponse
 }
-var file_proto_vps_proto_depIdxs = []int32{
+var file_vps_proto_depIdxs = []int32{
 	6,  // 0: vps.DirResponse.files:type_name -> vps.FileItem
 	0,  // 1: vps.BackendService.StreamTelemetry:input_type -> vps.TelemetryRequest
 	12, // 2: vps.BackendService.UploadScreenshot:input_type -> vps.ScreenshotRequest
@@ -1056,26 +1067,26 @@ var file_proto_vps_proto_depIdxs = []int32{
 	0,  // [0:1] is the sub-list for field type_name
 }
 
-func init() { file_proto_vps_proto_init() }
-func file_proto_vps_proto_init() {
-	if File_proto_vps_proto != nil {
+func init() { file_vps_proto_init() }
+func file_vps_proto_init() {
+	if File_vps_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_vps_proto_rawDesc), len(file_proto_vps_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vps_proto_rawDesc), len(file_vps_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
-		GoTypes:           file_proto_vps_proto_goTypes,
-		DependencyIndexes: file_proto_vps_proto_depIdxs,
-		MessageInfos:      file_proto_vps_proto_msgTypes,
+		GoTypes:           file_vps_proto_goTypes,
+		DependencyIndexes: file_vps_proto_depIdxs,
+		MessageInfos:      file_vps_proto_msgTypes,
 	}.Build()
-	File_proto_vps_proto = out.File
-	file_proto_vps_proto_goTypes = nil
-	file_proto_vps_proto_depIdxs = nil
+	File_vps_proto = out.File
+	file_vps_proto_goTypes = nil
+	file_vps_proto_depIdxs = nil
 }

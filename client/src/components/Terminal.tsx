@@ -38,17 +38,14 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
 
-    // Container hazır olana kadar bekle, sonra fit et
     const fitTerminal = () => {
       if (terminalRef.current && terminalRef.current.offsetWidth > 0 && terminalRef.current.offsetHeight > 0) {
         fitAddon.fit();
       }
     };
 
-    // İlk fit - container render olduktan sonra
     const fitTimeout = setTimeout(fitTerminal, 100);
     
-    // ResizeObserver ile container boyut değişikliklerini takip et
     const resizeObserver = new ResizeObserver(() => {
       fitTerminal();
     });
@@ -56,12 +53,24 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
 
     xtermRef.current = term;
 
+    term.write('\x1b[90mConnecting to VPS...\x1b[0m\r\n');
+
     socket.on('connect', () => {
       socket.emit('pty_connect', vpsId);
     });
 
+    socket.on('connect_error', (err) => {
+      term.write(`\r\n\x1b[31mConnection failed: ${err.message}\x1b[0m\r\n`);
+    });
+
+    socket.on('disconnect', (reason) => {
+      term.write(`\r\n\x1b[33mDisconnected: ${reason}\x1b[0m\r\n`);
+    });
+
     term.onData((data) => {
-      socket.emit('pty_input', data);
+      if (socket.connected) {
+        socket.emit('pty_input', data);
+      }
     });
 
     socket.on('pty_output', (data: string) => {

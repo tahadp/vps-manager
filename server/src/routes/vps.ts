@@ -208,3 +208,70 @@ vpsRouter.put('/:id/file', requireAuth, validateParams(idParamSchema), validate(
     res.status(500).json({ error: err.message });
   }
 });
+
+// Delete File or Directory
+vpsRouter.delete('/:id/files', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  const filePath = req.query.path as string;
+  if (!filePath) return res.status(400).json({ error: 'Path is required' });
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await executeCommand(vpsId, `rm -rf "${filePath}"`);
+    await logAudit(req.user!.id, vpsId, 'FILE_DELETE', `Deleted: ${filePath}`);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create File or Directory
+vpsRouter.post('/:id/files', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  const { path: filePath, type } = req.body;
+  if (!filePath) return res.status(400).json({ error: 'Path is required' });
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const cmd = type === 'directory' ? `mkdir -p "${filePath}"` : `touch "${filePath}"`;
+    const result = await executeCommand(vpsId, cmd);
+    await logAudit(req.user!.id, vpsId, 'FILE_CREATE', `Created: ${filePath}`);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Rename File or Directory
+vpsRouter.patch('/:id/files', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  const { oldPath, newPath } = req.body;
+  if (!oldPath || !newPath) return res.status(400).json({ error: 'Both oldPath and newPath are required' });
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await executeCommand(vpsId, `mv "${oldPath}" "${newPath}"`);
+    await logAudit(req.user!.id, vpsId, 'FILE_RENAME', `Renamed: ${oldPath} to ${newPath}`);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download File
+vpsRouter.get('/:id/file/download', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  const filePath = req.query.path as string;
+  if (!filePath) return res.status(400).json({ error: 'Path is required' });
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const result = await readFile(vpsId, filePath);
+    const fileName = filePath.split('/').pop() || 'file';
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(result.content);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});

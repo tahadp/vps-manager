@@ -49,6 +49,7 @@ server.addService(vpsPackage.BackendService.service, {
         RAMUsage: request.ram_usage,
         RAMTotal: request.ram_total,
         DiskUsage: request.disk_usage,
+        DiskTotal: request.disk_total,
         NetTx: request.net_tx,
         NetRx: request.net_rx,
         Timestamp: request.timestamp

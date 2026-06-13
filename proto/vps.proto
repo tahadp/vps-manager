@@ -33,6 +33,7 @@ message TelemetryRequest {
   float net_tx = 6;
   float net_rx = 7;
   int64 timestamp = 8;
+  float disk_total = 9;
 }
 
 message TelemetryResponse {

@@ -32,7 +32,6 @@ func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest
 		cmd = exec.Command("sh", "-c", req.Command)
 	}
 
-	// Timeout uygula (varsayılan 30 saniye)
 	timeout := 30 * time.Second
 	if req.TimeoutSeconds > 0 {
 		timeout = time.Duration(req.TimeoutSeconds) * time.Second
@@ -134,7 +133,6 @@ func (s *AgentServer) ShellStream(stream pb.AgentService_ShellStreamServer) erro
 	return nil
 }
 
-// APIKeyAuth implements credentials.PerRPCCredentials
 type APIKeyAuth struct {
 	Key string
 }
@@ -162,7 +160,6 @@ func (p *program) Start(s service.Service) error {
 func (p *program) run() {
 	log.Println("VPS Agent (Golang) is starting in daemon mode...")
 
-	// 1. Start gRPC Server for Backend -> Agent communication
 	go func() {
 		lis, err := net.Listen("tcp", ":50052")
 		if err != nil {
@@ -172,7 +169,7 @@ func (p *program) run() {
 		grpcServer := grpc.NewServer()
 		pb.RegisterAgentServiceServer(grpcServer, &AgentServer{vpsID: p.cfg.VpsID})
 		log.Printf("Agent gRPC server listening at %v", lis.Addr())
-		
+
 		go func() {
 			<-p.ctx.Done()
 			grpcServer.Stop()
@@ -183,7 +180,6 @@ func (p *program) run() {
 		}
 	}()
 
-	// 2. Connect to Backend for Telemetry & Screenshots
 	conn, err := grpc.Dial(p.cfg.BackendIP,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithPerRPCCredentials(APIKeyAuth{Key: p.cfg.APIKey}),
@@ -199,21 +195,20 @@ func (p *program) run() {
 	go func() {
 		retryDelay := 1 * time.Second
 		maxRetryDelay := 2 * time.Minute
-		
+
 		for {
 			select {
 			case <-p.ctx.Done():
 				return
 			default:
 			}
-			
+
 			_, err := backendClient.Heartbeat(p.ctx, &pb.HeartbeatRequest{
 				VpsId:     p.cfg.VpsID,
 				Timestamp: time.Now().Unix(),
 			})
 			if err != nil {
 				log.Printf("Heartbeat failed: %v", err)
-				// Exponential backoff
 				time.Sleep(retryDelay)
 				retryDelay = time.Duration(float64(retryDelay) * 1.5)
 				if retryDelay > maxRetryDelay {
@@ -221,10 +216,9 @@ func (p *program) run() {
 				}
 				continue
 			}
-			
-			// Başarılı heartbeat'te retry delay'i sıfırla
+
 			retryDelay = 1 * time.Second
-			
+
 			select {
 			case <-p.ctx.Done():
 				return
@@ -237,7 +231,7 @@ func (p *program) run() {
 	go func() {
 		retryDelay := 1 * time.Second
 		maxRetryDelay := 30 * time.Second
-		
+
 		for {
 			select {
 			case <-p.ctx.Done():
@@ -255,8 +249,7 @@ func (p *program) run() {
 				}
 				continue
 			}
-			
-			// Başarılı bağlantıda retry delay'i sıfırla
+
 			retryDelay = 1 * time.Second
 
 			for {
@@ -279,13 +272,14 @@ func (p *program) run() {
 					RamUsage:  float32(metrics.RAMUsage),
 					RamTotal:  float32(metrics.RAMTotal),
 					DiskUsage: float32(metrics.DiskUsage),
+					DiskTotal: float32(metrics.DiskTotal),
 					NetTx:     float32(metrics.NetTx),
 					NetRx:     float32(metrics.NetRx),
 					Timestamp: metrics.Timestamp,
 				}
 				if err := stream.Send(req); err != nil {
 					log.Printf("Telemetry stream send error: %v", err)
-					break // reconnect
+					break
 				}
 
 				time.Sleep(1 * time.Second)
@@ -299,12 +293,11 @@ func (p *program) run() {
 		case <-p.ctx.Done():
 			return
 		case <-time.After(30 * time.Second):
-			// Headless ortamda screenshot atla
 			if telemetry.IsHeadless() {
 				log.Println("Headless environment detected, skipping screenshot")
 				continue
 			}
-			
+
 			data, err := telemetry.CaptureScreenBytes()
 			if err != nil {
 				log.Printf("Screenshot capture failed: %v", err)

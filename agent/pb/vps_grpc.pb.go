@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.35.1
-// source: proto/vps.proto
+// source: vps.proto
 
 package pb
 
@@ -191,7 +191,7 @@ var BackendService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/vps.proto",
+	Metadata: "vps.proto",
 }
 
 const (
@@ -444,5 +444,5 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "proto/vps.proto",
+	Metadata: "vps.proto",
 }

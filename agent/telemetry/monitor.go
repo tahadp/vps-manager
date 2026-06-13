@@ -16,15 +16,16 @@ type Metrics struct {
 	RAMUsage  float64
 	RAMTotal  float64
 	DiskUsage float64
+	DiskTotal float64
 	NetTx     float64
 	NetRx     float64
 	Timestamp int64
 }
 
 var (
-	lastNet   *net.IOCountersStat
-	lastTime  time.Time
-	netMu     sync.Mutex
+	lastNet     *net.IOCountersStat
+	lastTime    time.Time
+	netMu       sync.Mutex
 	initialized bool
 )
 
@@ -52,12 +53,13 @@ func CollectMetrics() (*Metrics, error) {
 	dStat, err := disk.Usage(diskPath)
 	if err == nil {
 		m.DiskUsage = dStat.UsedPercent
+		m.DiskTotal = float64(dStat.Total)
 	}
 
 	// Network
 	netMu.Lock()
 	defer netMu.Unlock()
-	
+
 	netStats, err := net.IOCounters(false)
 	if err == nil && len(netStats) > 0 {
 		currentNet := &netStats[0]
@@ -70,7 +72,7 @@ func CollectMetrics() (*Metrics, error) {
 				m.NetRx = float64(currentNet.BytesRecv-lastNet.BytesRecv) / duration
 			}
 		}
-		
+
 		lastNet = currentNet
 		lastTime = now
 		initialized = true
