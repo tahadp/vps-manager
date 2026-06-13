@@ -37,7 +37,23 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
-    fitAddon.fit();
+
+    // Container hazır olana kadar bekle, sonra fit et
+    const fitTerminal = () => {
+      if (terminalRef.current && terminalRef.current.offsetWidth > 0 && terminalRef.current.offsetHeight > 0) {
+        fitAddon.fit();
+      }
+    };
+
+    // İlk fit - container render olduktan sonra
+    const fitTimeout = setTimeout(fitTerminal, 100);
+    
+    // ResizeObserver ile container boyut değişikliklerini takip et
+    const resizeObserver = new ResizeObserver(() => {
+      fitTerminal();
+    });
+    resizeObserver.observe(terminalRef.current);
+
     xtermRef.current = term;
 
     socket.on('connect', () => {
@@ -56,11 +72,9 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
       term.write(`\r\n\x1b[31mError: ${err}\x1b[0m\r\n`);
     });
 
-    const handleResize = () => fitAddon.fit();
-    window.addEventListener('resize', handleResize);
-
     return () => {
-      window.removeEventListener('resize', handleResize);
+      clearTimeout(fitTimeout);
+      resizeObserver.disconnect();
       socket.disconnect();
       term.dispose();
       xtermRef.current = null;
