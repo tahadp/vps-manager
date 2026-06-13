@@ -25,7 +25,7 @@ const logAudit = async (userId: string, target: string, action: string, details:
 // Param schemas
 const idParamSchema = z.object({ id: z.string().uuid('Invalid VPS ID') });
 const fileQuerySchema = z.object({ path: z.string().min(1, 'Path is required').max(1000) });
-const metricsQuerySchema = z.object({ hours: z.string().regex(/^\d+$/).transform(Number).optional() });
+const metricsQuerySchema = z.object({ hours: z.string().optional() });
 
 // Get all VPS instances
 vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
@@ -47,7 +47,7 @@ vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
 vpsRouter.get('/:id', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
   try {
     const vps = await prisma.vps.findUnique({
-      where: { id: req.params.id },
+      where: { id: req.params.id as string },
       include: { user: { select: { id: true, email: true } } }
     });
     if (!vps) return res.status(404).json({ error: 'VPS not found' });

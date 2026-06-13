@@ -1,6 +1,7 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
+import { redisPublisher, redisCache } from './redis';
 
 const PROTO_PATH = path.join(__dirname, '../../proto/vps.proto');
 
@@ -34,7 +35,6 @@ const checkApiKey = async (call: any, callback?: any) => {
     return false;
   }
   
-  // Attach VPS ID to the call context so we can use it securely
   call.authenticatedVpsId = vps.id;
   return true;
 };
@@ -43,21 +43,16 @@ server.addService(vpsPackage.BackendService.service, {
   StreamTelemetry: async (call: any) => {
     if (!(await checkApiKey(call))) return;
     call.on('data', (request: any) => {
-      // console.log(`[Telemetry] VPS ID: ${request.vps_id} - CPU: ${request.cpu_usage}%`);
-      // Telemetry processing logic
-      const redisPublisher = require('./redis').redisPublisher;
-      if (redisPublisher) {
-        redisPublisher.publish(`telemetry:${request.vps_id}`, JSON.stringify({
-          vpsId: request.vps_id,
-          CPUUsage: request.cpu_usage,
-          RAMUsage: request.ram_usage,
-          RAMTotal: request.ram_total,
-          DiskUsage: request.disk_usage,
-          NetTx: request.net_tx,
-          NetRx: request.net_rx,
-          Timestamp: request.timestamp
-        }));
-      }
+      redisPublisher.publish(`telemetry:${request.vps_id}`, JSON.stringify({
+        vpsId: request.vps_id,
+        CPUUsage: request.cpu_usage,
+        RAMUsage: request.ram_usage,
+        RAMTotal: request.ram_total,
+        DiskUsage: request.disk_usage,
+        NetTx: request.net_tx,
+        NetRx: request.net_rx,
+        Timestamp: request.timestamp
+      }));
     });
     call.on('end', () => {
       call.end();
@@ -65,15 +60,11 @@ server.addService(vpsPackage.BackendService.service, {
   },
   UploadScreenshot: async (call: any, callback: any) => {
     if (!(await checkApiKey(call, callback))) return;
-    if (redisPublisher) {
-      redisPublisher.publish(`screenshot:${call.request.vps_id}`, JSON.stringify({
-        vpsId: call.request.vps_id,
-        imageData: call.request.image_data.toString('base64')
-      }));
-    }
-    if (redisCache) {
-      await redisCache.hset('vps_latest_screenshots', call.request.vps_id, call.request.image_data.toString('base64'));
-    }
+    redisPublisher.publish(`screenshot:${call.request.vps_id}`, JSON.stringify({
+      vpsId: call.request.vps_id,
+      imageData: call.request.image_data.toString('base64')
+    }));
+    await redisCache.hset('vps_latest_screenshots', call.request.vps_id, call.request.image_data.toString('base64'));
     callback(null, { success: true });
   },
   Heartbeat: async (call: any, callback: any) => {
@@ -104,6 +95,4 @@ export const startGrpcServer = () => {
       console.log(`gRPC Server is running on port ${port}`);
     }
   );
-};
-
 };
