@@ -32,7 +32,21 @@ func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest
 		cmd = exec.Command("sh", "-c", req.Command)
 	}
 
+	// Timeout uygula (varsayılan 30 saniye)
+	timeout := 30 * time.Second
+	if req.TimeoutSeconds > 0 {
+		timeout = time.Duration(req.TimeoutSeconds) * time.Second
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd = exec.CommandContext(ctx, cmd.Args[0], cmd.Args[1:]...)
+
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return &pb.CommandResponse{Success: false, Output: "Command timed out"}, nil
+	}
 	if err != nil {
 		return &pb.CommandResponse{Success: false, Output: fmt.Sprintf("%s: %s", err.Error(), string(out))}, nil
 	}
@@ -126,7 +140,7 @@ type APIKeyAuth struct {
 }
 
 func (a APIKeyAuth) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
-	return map[string]string{"api_key": a.Key}, nil
+	return map[string]string{"x-api-key": a.Key}, nil
 }
 
 func (a APIKeyAuth) RequireTransportSecurity() bool {
@@ -181,8 +195,49 @@ func (p *program) run() {
 	defer conn.Close()
 	backendClient := pb.NewBackendServiceClient(conn)
 
+	// Heartbeat Loop
+	go func() {
+		retryDelay := 1 * time.Second
+		maxRetryDelay := 2 * time.Minute
+		
+		for {
+			select {
+			case <-p.ctx.Done():
+				return
+			default:
+			}
+			
+			_, err := backendClient.Heartbeat(p.ctx, &pb.HeartbeatRequest{
+				VpsId:     p.cfg.VpsID,
+				Timestamp: time.Now().Unix(),
+			})
+			if err != nil {
+				log.Printf("Heartbeat failed: %v", err)
+				// Exponential backoff
+				time.Sleep(retryDelay)
+				retryDelay = time.Duration(float64(retryDelay) * 1.5)
+				if retryDelay > maxRetryDelay {
+					retryDelay = maxRetryDelay
+				}
+				continue
+			}
+			
+			// Başarılı heartbeat'te retry delay'i sıfırla
+			retryDelay = 1 * time.Second
+			
+			select {
+			case <-p.ctx.Done():
+				return
+			case <-time.After(10 * time.Second):
+			}
+		}
+	}()
+
 	// Telemetry Loop
 	go func() {
+		retryDelay := 1 * time.Second
+		maxRetryDelay := 30 * time.Second
+		
 		for {
 			select {
 			case <-p.ctx.Done():
@@ -190,12 +245,19 @@ func (p *program) run() {
 			default:
 			}
 
-			stream, err := backendClient.StreamTelemetry(context.Background())
+			stream, err := backendClient.StreamTelemetry(p.ctx)
 			if err != nil {
 				log.Printf("Telemetry stream connect error: %v", err)
-				time.Sleep(5 * time.Second)
+				time.Sleep(retryDelay)
+				retryDelay = time.Duration(float64(retryDelay) * 1.5)
+				if retryDelay > maxRetryDelay {
+					retryDelay = maxRetryDelay
+				}
 				continue
 			}
+			
+			// Başarılı bağlantıda retry delay'i sıfırla
+			retryDelay = 1 * time.Second
 
 			for {
 				select {
@@ -237,12 +299,18 @@ func (p *program) run() {
 		case <-p.ctx.Done():
 			return
 		case <-time.After(30 * time.Second):
+			// Headless ortamda screenshot atla
+			if telemetry.IsHeadless() {
+				log.Println("Headless environment detected, skipping screenshot")
+				continue
+			}
+			
 			data, err := telemetry.CaptureScreenBytes()
 			if err != nil {
 				log.Printf("Screenshot capture failed: %v", err)
 				continue
 			}
-			_, err = backendClient.UploadScreenshot(context.Background(), &pb.ScreenshotRequest{
+			_, err = backendClient.UploadScreenshot(p.ctx, &pb.ScreenshotRequest{
 				VpsId:     p.cfg.VpsID,
 				ImageData: data,
 			})

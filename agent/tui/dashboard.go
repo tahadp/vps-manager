@@ -19,6 +19,9 @@ const (
 	ActionQuit
 )
 
+type statusMsg string
+type errMsg struct{ err error }
+
 type dashboardModel struct {
 	choices  []string
 	actions  []DashboardAction
@@ -27,17 +30,19 @@ type dashboardModel struct {
 	actionCb func(DashboardAction) (string, error)
 	done     bool
 	action   DashboardAction
+	loading  bool
+	message  string
 }
 
 func InitialDashboardModel(status string, actionCb func(DashboardAction) (string, error)) dashboardModel {
 	return dashboardModel{
 		choices: []string{
-			"Start Agent (Foreground)",
-			"Install Service",
-			"Uninstall Service",
-			"Start Service",
-			"Stop Service",
-			"Quit",
+			"▶ Start Agent (Foreground)",
+			"📦 Install Service",
+			"🗑️  Uninstall Service",
+			"✅ Start Service",
+			"⏹️  Stop Service",
+			"❌ Quit",
 		},
 		actions: []DashboardAction{
 			ActionStartForeground,
@@ -77,6 +82,10 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 			}
 		case "enter", " ":
+			if m.loading {
+				return m, nil
+			}
+
 			selected := m.actions[m.cursor]
 			if selected == ActionQuit {
 				m.action = ActionQuit
@@ -88,14 +97,39 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 
-			// Execute service actions
-			res, err := m.actionCb(selected)
-			if err != nil {
-				m.status = fmt.Sprintf("Error: %v", err)
-			} else {
-				m.status = res
+			// Service action'ları async çalıştır
+			m.loading = true
+			m.message = ""
+			return m, func() tea.Msg {
+				res, err := m.actionCb(selected)
+				if err != nil {
+					return errMsg{err}
+				}
+				return statusMsg(res)
+			}
+
+		case "r":
+			// Refresh status
+			m.loading = true
+			return m, func() tea.Msg {
+				res, err := m.actionCb(ActionQuit) // Status check için dummy action
+				if err != nil {
+					return errMsg{err}
+				}
+				return statusMsg(res)
 			}
 		}
+
+	case statusMsg:
+		m.loading = false
+		m.message = string(msg)
+		m.status = string(msg)
+		return m, nil
+
+	case errMsg:
+		m.loading = false
+		m.message = fmt.Sprintf("Error: %v", msg.err)
+		return m, nil
 	}
 	return m, nil
 }
@@ -106,27 +140,80 @@ func (m dashboardModel) View() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).Render("\n=== VPS Agent Dashboard ===\n\n"))
 	
-	b.WriteString(fmt.Sprintf("Status: %s\n\n", m.status))
+	// Header
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("205")).
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 2)
+	
+	b.WriteString("\n")
+	b.WriteString(titleStyle.Render("🖥️  VPS Agent Dashboard"))
+	b.WriteString("\n\n")
+	
+	// Status
+	statusStyle := lipgloss.NewStyle().
+		Bold(true).
+		Padding(0, 1)
+	
+	switch {
+	case strings.Contains(m.status, "Running"):
+		statusStyle = statusStyle.Foreground(lipgloss.Color("10")) // Yeşil
+	case strings.Contains(m.status, "Stopped"):
+		statusStyle = statusStyle.Foreground(lipgloss.Color("9")) // Kırmızı
+	default:
+		statusStyle = statusStyle.Foreground(lipgloss.Color("11")) // Sarı
+	}
+	
+	b.WriteString(fmt.Sprintf("  Status: %s\n", statusStyle.Render(m.status)))
+	b.WriteString("\n")
 
+	// Menu items
 	for i, choice := range m.choices {
-		cursor := " "
+		cursor := "  "
+		style := lipgloss.NewStyle()
+		
 		if m.cursor == i {
-			cursor = ">"
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Render(fmt.Sprintf("%s %s\n", cursor, choice)))
+			cursor = "▸ "
+			style = style.Foreground(lipgloss.Color("212")).Bold(true)
 		} else {
-			b.WriteString(fmt.Sprintf("%s %s\n", cursor, choice))
+			style = style.Foreground(lipgloss.Color("252"))
 		}
+		
+		b.WriteString(style.Render(fmt.Sprintf("%s%s\n", cursor, choice)))
 	}
 
-	b.WriteString("\n(Use arrow keys to navigate, enter to select, q to quit)\n")
+	// Loading indicator
+	if m.loading {
+		b.WriteString("\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("  ⏳ Processing..."))
+		b.WriteString("\n")
+	}
+
+	// Message
+	if m.message != "" && !m.loading {
+		b.WriteString("\n")
+		msgStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("10")).
+			Padding(0, 1).
+			Border(lipgloss.NormalBorder(), false, false, true, false)
+		b.WriteString(msgStyle.Render(m.message))
+		b.WriteString("\n")
+	}
+
+	// Help
+	b.WriteString("\n")
+	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	b.WriteString(helpStyle.Render("  ↑/↓/j/k: navigate  •  enter: select  •  q/esc: quit"))
+	b.WriteString("\n")
+	
 	return b.String()
 }
 
 func RunDashboard(initialStatus string, actionCb func(DashboardAction) (string, error)) (DashboardAction, error) {
 	m := InitialDashboardModel(initialStatus, actionCb)
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
 		return ActionQuit, err

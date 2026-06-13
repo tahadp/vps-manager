@@ -1,7 +1,11 @@
+"use client";
 import React from 'react';
-import { Bell, Search, User } from 'lucide-react';
+import { Bell, Search, User, Sun, Moon } from 'lucide-react';
+import { useTheme } from 'next-themes';
 
 export function Topbar() {
+  const { theme, setTheme } = useTheme();
+
   return (
     <header className="h-16 glass border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-10 sticky top-0">
       <div className="flex-1 max-w-md relative flex items-center">
@@ -19,6 +23,14 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-4 ml-4">
+        <button 
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="p-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors"
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+        </button>
+
         <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors relative">
           <Bell className="w-5 h-5" />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand shadow-glow" />

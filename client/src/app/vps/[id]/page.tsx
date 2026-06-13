@@ -2,17 +2,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { Terminal as XTerm } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import Editor from "@monaco-editor/react";
-import "xterm/css/xterm.css";
 import { motion } from "framer-motion";
 import { 
   Server, Cpu, MemoryStick, HardDrive, TerminalSquare, 
   FolderOpen, MonitorPlay, ArrowLeft, RefreshCw, PowerOff,
-  FileText, Folder, Save, AlertCircle, LineChart as LineChartIcon
+  AlertCircle, LineChart as LineChartIcon
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import WebPTY from "@/components/Terminal";
+import FileManager from "@/components/FileManager";
 
 export default function VpsDetail({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -22,17 +20,6 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
   const [activeTab, setActiveTab] = useState("terminal");
   const [telemetry, setTelemetry] = useState<any>({});
   const [chartData, setChartData] = useState<any[]>([]);
-  
-  // File Manager State
-  const [currentPath, setCurrentPath] = useState("/");
-  const [files, setFiles] = useState<any[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileContent, setFileContent] = useState("");
-  const [savingFile, setSavingFile] = useState(false);
-
-  // Terminal & Socket
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const xtermRef = useRef<XTerm | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -42,129 +29,49 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
       return;
     }
     
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}`, {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
+    fetch(`${API}/api/vps/${id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => res.json())
     .then(data => {
       setVps(data);
       setLoading(false);
-      initSocket(token);
-      
-      // Mock 24h data
-      const mock = [];
-      const now = new Date();
-      for(let i=24; i>=0; i--) {
-        const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-        mock.push({
-          time: time.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-          cpu: Math.floor(Math.random() * 40) + 10,
-          ram: Math.floor(Math.random() * 30) + 40
-        });
-      }
-      setChartData(mock);
+
+      const socket = io(API, { auth: { token } });
+      socketRef.current = socket;
+      socket.emit("subscribe_vps", id);
+      socket.on("telemetry_update", (d) => setTelemetry(d));
+
+      // Fetch real historical metrics
+      fetch(`${API}/api/vps/${id}/metrics?hours=24`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => res.json())
+      .then(metrics => {
+        if (Array.isArray(metrics) && metrics.length > 0) {
+          setChartData(metrics.map((m: any) => ({
+            time: new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+            cpu: m.cpu,
+            ram: m.ram
+          })));
+        }
+      })
+      .catch(() => {});
     })
     .catch(() => setLoading(false));
 
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
-      if (xtermRef.current) xtermRef.current.dispose();
     };
   }, [id, router]);
-
-  const initSocket = (token: string) => {
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-      auth: { token }
-    });
-    socketRef.current = socket;
-
-    socket.emit("subscribe_vps", id);
-    socket.on("telemetry_update", (data) => setTelemetry(data));
-  };
-
-  // Setup Terminal when tab is active
-  useEffect(() => {
-    if (activeTab === "terminal" && terminalRef.current && socketRef.current && !xtermRef.current) {
-      const term = new XTerm({
-        theme: { 
-          background: "#18181b", // zinc-900 
-          foreground: "#f4f4f5", // zinc-100
-          cursor: "#8251EE"
-        },
-        fontFamily: "'Geist Mono', monospace",
-        fontSize: 14,
-        cursorBlink: true
-      });
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      term.open(terminalRef.current);
-      fitAddon.fit();
-      xtermRef.current = term;
-
-      socketRef.current.emit("pty_connect", id);
-
-      term.onData((data) => {
-        socketRef.current?.emit("pty_input", data);
-      });
-
-      socketRef.current.on("pty_output", (data) => {
-        term.write(data);
-      });
-
-      const handleResize = () => fitAddon.fit();
-      window.addEventListener("resize", handleResize);
-      return () => window.removeEventListener("resize", handleResize);
-    }
-  }, [activeTab, id]);
-
-  // Load files when File Manager is active
-  useEffect(() => {
-    if (activeTab === "files") {
-      fetchFiles(currentPath);
-    }
-  }, [activeTab, currentPath]);
-
-  const fetchFiles = async (path: string) => {
-    const token = localStorage.getItem("token");
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}/files?path=${path}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
-      setFiles(data.files || []);
-    }
-  };
-
-  const openFile = async (fileName: string) => {
-    const token = localStorage.getItem("token");
-    const fullPath = currentPath === "/" ? `/${fileName}` : `${currentPath}/${fileName}`;
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}/file?path=${fullPath}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await res.json();
-    if (data.success) {
-      setSelectedFile(fullPath);
-      setFileContent(data.content);
-    }
-  };
-
-  const saveFile = async () => {
-    if (!selectedFile) return;
-    setSavingFile(true);
-    const token = localStorage.getItem("token");
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}/file`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ path: selectedFile, content: fileContent })
-    });
-    setSavingFile(false);
-    alert("File saved!");
-  };
 
   const executeAction = async (command: string) => {
     if (!confirm(`Are you sure you want to execute: ${command}?`)) return;
     const token = localStorage.getItem("token");
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}/command`, {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    await fetch(`${API}/api/vps/${id}/command`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ command })
@@ -203,8 +110,16 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
             <h1 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-3">
               {vps.name}
               <span className="flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-status-success opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-status-success"></span>
+                {vps.status === 'ONLINE' ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-status-success opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-status-success"></span>
+                  </>
+                ) : vps.status === 'MAINTENANCE' ? (
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-status-warning"></span>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-status-error"></span>
+                )}
               </span>
             </h1>
             <div className="text-text-muted text-sm mt-1 flex items-center gap-2 font-mono">
@@ -266,79 +181,14 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
             
             {/* Terminal */}
             {activeTab === 'terminal' && (
-              <div className="absolute inset-0 p-4" ref={terminalRef} />
+              <div className="absolute inset-0 p-4">
+                <WebPTY vpsId={id} />
+              </div>
             )}
             
             {/* File Manager */}
             {activeTab === 'files' && (
-              <div className="flex h-full">
-                <div className="w-1/3 border-r border-border-DEFAULT p-2 flex flex-col bg-neutral-bg1/50">
-                  <div className="px-3 py-2 text-xs font-mono text-text-secondary bg-neutral-bg2 rounded-lg border border-border-subtle mb-2 truncate">
-                    {currentPath}
-                  </div>
-                  <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-                    {currentPath !== "/" && (
-                      <div 
-                        className="flex items-center gap-2 p-2 hover:bg-neutral-bg3 rounded-lg cursor-pointer text-sm text-text-primary transition-colors" 
-                        onClick={() => setCurrentPath(currentPath.split("/").slice(0, -1).join("/") || "/")}
-                      >
-                        <Folder className="w-4 h-4 text-brand-light" />
-                        ..
-                      </div>
-                    )}
-                    {files.map(f => (
-                      <div 
-                        key={f.name} 
-                        className={`flex justify-between items-center p-2 rounded-lg cursor-pointer text-sm transition-colors ${selectedFile === (currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`) ? 'bg-brand/20 text-brand-light' : 'hover:bg-neutral-bg3 text-text-primary'}`} 
-                        onClick={() => f.isDir ? setCurrentPath(currentPath === "/" ? `/${f.name}` : `${currentPath}/${f.name}`) : openFile(f.name)}
-                      >
-                        <span className="flex items-center gap-2 truncate">
-                          {f.isDir ? <Folder className="w-4 h-4 text-dataviz-blue shrink-0" /> : <FileText className="w-4 h-4 text-text-muted shrink-0" />}
-                          <span className="truncate">{f.name}</span>
-                        </span>
-                        {!f.isDir && <span className="text-xs text-text-muted shrink-0 ml-2">{(f.size / 1024).toFixed(1)} KB</span>}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="w-2/3 flex flex-col">
-                  {selectedFile ? (
-                    <>
-                      <div className="px-4 py-2 border-b border-border-DEFAULT flex justify-between items-center bg-neutral-bg2/50">
-                        <span className="text-sm font-mono text-text-primary truncate mr-4">{selectedFile}</span>
-                        <button 
-                          onClick={saveFile} 
-                          disabled={savingFile} 
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-brand hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-medium text-white transition-colors shadow-glow"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          {savingFile ? "Saving..." : "Save"}
-                        </button>
-                      </div>
-                      <div className="flex-1">
-                        <Editor
-                          height="100%"
-                          theme="vs-dark"
-                          value={fileContent}
-                          onChange={(val) => setFileContent(val || "")}
-                          options={{ 
-                            minimap: { enabled: false },
-                            fontFamily: "'Geist Mono', monospace",
-                            fontSize: 13,
-                            padding: { top: 16 }
-                          }}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-text-muted">
-                      <FileText className="w-12 h-12 mb-3 opacity-20" />
-                      Select a file to edit
-                    </div>
-                  )}
-                </div>
-              </div>
+              <FileManager vpsId={id} />
             )}
 
             {/* Remote Desktop */}
@@ -357,20 +207,28 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
               <div className="absolute inset-0 bg-neutral-bg1 flex flex-col p-6">
                 <h2 className="text-lg font-semibold text-text-primary mb-6">Resource Usage (Last 24h)</h2>
                 <div className="flex-1 w-full h-full min-h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
-                      <XAxis dataKey="time" stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} unit="%" />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px' }}
-                        itemStyle={{ color: '#f4f4f5' }}
-                      />
-                      <Legend />
-                      <Line type="monotone" dataKey="cpu" name="CPU Usage" stroke="#8251EE" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-                      <Line type="monotone" dataKey="ram" name="RAM Usage" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} unit="%" />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px' }}
+                          itemStyle={{ color: '#f4f4f5' }}
+                        />
+                        <Legend />
+                        <Line type="monotone" dataKey="cpu" name="CPU Usage" stroke="#8251EE" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                        <Line type="monotone" dataKey="ram" name="RAM Usage" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-text-muted">
+                      <LineChartIcon className="w-12 h-12 mb-3 opacity-20" />
+                      <p className="text-sm">No historical data available yet.</p>
+                      <p className="text-xs text-text-muted mt-1">Metrics will appear as the agent streams telemetry.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

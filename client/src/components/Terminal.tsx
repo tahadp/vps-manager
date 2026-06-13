@@ -1,38 +1,77 @@
 "use client";
 import React, { useEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
+import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
-import io from 'socket.io-client';
+import io, { Socket } from 'socket.io-client';
 
-export default function WebPTY({ vpsId }: { vpsId: string }) {
+interface WebPTYProps {
+  vpsId: string;
+  className?: string;
+}
+
+export default function WebPTY({ vpsId, className }: WebPTYProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<XTerm | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    const term = new Terminal({ theme: { background: '#111827' } });
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
+      auth: { token }
+    });
+    socketRef.current = socket;
+
+    const term = new XTerm({
+      theme: {
+        background: '#18181b',
+        foreground: '#f4f4f5',
+        cursor: '#8251EE'
+      },
+      fontFamily: "'Geist Mono', monospace",
+      fontSize: 14,
+      cursorBlink: true
+    });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
     fitAddon.fit();
+    xtermRef.current = term;
 
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000');
-    socket.emit('subscribe_pty', vpsId);
-
-    term.onData((data) => {
-      socket.emit('pty_input', { vpsId, data });
+    socket.on('connect', () => {
+      socket.emit('pty_connect', vpsId);
     });
 
-    socket.on('pty_output', (data) => {
+    term.onData((data) => {
+      socket.emit('pty_input', data);
+    });
+
+    socket.on('pty_output', (data: string) => {
       term.write(data);
     });
 
+    socket.on('pty_error', (err: string) => {
+      term.write(`\r\n\x1b[31mError: ${err}\x1b[0m\r\n`);
+    });
+
+    const handleResize = () => fitAddon.fit();
+    window.addEventListener('resize', handleResize);
+
     return () => {
+      window.removeEventListener('resize', handleResize);
       socket.disconnect();
       term.dispose();
+      xtermRef.current = null;
+      socketRef.current = null;
     };
   }, [vpsId]);
 
-  return <div ref={terminalRef} style={{ width: '100%', height: '400px' }} className="rounded overflow-hidden border border-gray-700" />;
+  return (
+    <div 
+      ref={terminalRef} 
+      className={className || 'w-full h-full'}
+    />
+  );
 }

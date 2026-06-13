@@ -1,43 +1,62 @@
 "use client";
 import React, { useState } from 'react';
+import { TerminalSquare, Maximize2, X } from 'lucide-react';
 
-export default function ScreenView({ vpsId }: { vpsId: string }) {
-  const [imgSrc, setImgSrc] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+interface ScreenViewProps {
+  vpsId: string;
+  imageData?: string | null;
+  className?: string;
+}
 
-  const fetchScreenshot = async () => {
-    setLoading(true);
-    // API Call simülasyonu -> Lazy Loading kurgusu
-    setTimeout(() => {
-      setImgSrc('https://via.placeholder.com/800x600.png?text=VPS+Live+Screen');
-      setLoading(false);
-    }, 800);
-  };
+export default function ScreenView({ vpsId, imageData, className }: ScreenViewProps) {
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="mt-4 border border-gray-700 rounded p-4 bg-gray-800 shadow">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold text-white">Canlı Ekran (Lazy Loading)</h3>
-        <button 
-          className="bg-blue-600 hover:bg-blue-500 px-4 py-2 text-sm rounded font-bold text-white transition disabled:opacity-50" 
-          onClick={fetchScreenshot} 
-          disabled={loading}
-        >
-          {loading ? 'İndiriliyor...' : 'Ekranı Getir'}
-        </button>
-      </div>
-      <div className="w-full h-64 bg-black rounded flex items-center justify-center overflow-hidden border border-gray-700 relative">
-        {imgSrc ? (
-          <img 
-            src={imgSrc} 
-            alt="VPS Screen" 
-            className="w-full h-full object-contain" 
-            loading="lazy" 
-          />
+    <>
+      <div
+        className={`relative cursor-pointer group overflow-hidden ${className || 'w-full h-36 bg-black/50 border-y border-border-subtle flex items-center justify-center'}`}
+        onClick={() => imageData && setExpanded(true)}
+      >
+        {imageData ? (
+          <>
+            <img
+              src={`data:image/jpeg;base64,${imageData}`}
+              alt="VPS Screenshot"
+              className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Maximize2 className="w-4 h-4 text-white/80" />
+            </div>
+          </>
         ) : (
-          <span className="text-gray-500 text-sm">Görüntülemek için tıklayın. (Performans için otomatik yüklenmez)</span>
+          <div className="flex flex-col items-center text-text-muted/50 gap-2">
+            <TerminalSquare className="w-6 h-6" />
+            <span className="text-xs">No display signal</span>
+          </div>
         )}
       </div>
-    </div>
+
+      {/* Fullscreen overlay */}
+      {expanded && imageData && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setExpanded(false)}
+        >
+          <button
+            onClick={() => setExpanded(false)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <img
+            src={`data:image/jpeg;base64,${imageData}`}
+            alt="VPS Screenshot"
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+        </div>
+      )}
+    </>
   );
 }

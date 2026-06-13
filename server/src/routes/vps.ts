@@ -3,6 +3,8 @@ import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 import { executeCommand, listDirectory, readFile, writeFile } from '../grpcClient';
 import { OsType } from '@prisma/client';
+import { validate, validateQuery, validateParams, schemas } from '../middlewares/validation';
+import { z } from 'zod';
 
 export const vpsRouter = Router();
 
@@ -20,6 +22,11 @@ const logAudit = async (userId: string, target: string, action: string, details:
   });
 };
 
+// Param schemas
+const idParamSchema = z.object({ id: z.string().uuid('Invalid VPS ID') });
+const fileQuerySchema = z.object({ path: z.string().min(1, 'Path is required').max(1000) });
+const metricsQuerySchema = z.object({ hours: z.string().regex(/^\d+$/).transform(Number).optional() });
+
 // Get all VPS instances
 vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
@@ -36,20 +43,35 @@ vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Add a new VPS
-vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
-  if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
-  const { id, name, ipAddress = "Pending", os, userId } = req.body;
-  if (!name || !os || !userId) return res.status(400).json({ error: 'Missing required fields' });
+// Get single VPS by ID
+vpsRouter.get('/:id', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
   try {
-    const osEnum = os.toUpperCase().includes('WINDOW') ? OsType.WINDOWS : OsType.LINUX;
+    const vps = await prisma.vps.findUnique({
+      where: { id: req.params.id },
+      include: { user: { select: { id: true, email: true } } }
+    });
+    if (!vps) return res.status(404).json({ error: 'VPS not found' });
+    if (req.user!.role !== 'ADMIN' && vps.userId !== req.user!.id) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    res.json(vps);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch VPS' });
+  }
+});
+
+// Add a new VPS
+vpsRouter.post('/', requireAuth, validate(schemas.createVps), async (req: AuthRequest, res) => {
+  if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
+  const { name, ipAddress, os, userId } = req.body;
+  try {
+    const osEnum = os?.toUpperCase().includes('WINDOW') ? OsType.WINDOWS : OsType.LINUX;
     const createData: any = { 
       name, 
-      ipAddress, 
-      os: osEnum, 
+      ipAddress: ipAddress || "Pending", 
+      os: osEnum || OsType.LINUX, 
       user: { connect: { id: userId } } 
     };
-    if (id) createData.id = id; // Allow custom ID if provided
     
     const newVps = await prisma.vps.create({ data: createData });
     res.json(newVps);
@@ -59,7 +81,7 @@ vpsRouter.post('/', requireAuth, async (req: AuthRequest, res) => {
 });
 
 // Update a VPS
-vpsRouter.put('/:id', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.put('/:id', requireAuth, validateParams(idParamSchema), validate(schemas.updateVps), async (req: AuthRequest, res: any) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can update VPS properties' });
   const { id } = req.params;
   const { name, ipAddress, os, status, userId } = req.body;
@@ -79,7 +101,7 @@ vpsRouter.put('/:id', requireAuth, async (req: AuthRequest, res: any) => {
 });
 
 // Delete a VPS
-vpsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.delete('/:id', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can delete VPS' });
   const { id } = req.params;
   try {
@@ -91,7 +113,7 @@ vpsRouter.delete('/:id', requireAuth, async (req: AuthRequest, res: any) => {
 });
 
 // Single command execution
-vpsRouter.post('/:id/command', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), validate(schemas.executeCommand), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const { command } = req.body;
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
@@ -105,10 +127,27 @@ vpsRouter.post('/:id/command', requireAuth, async (req: AuthRequest, res: any) =
   }
 });
 
+// Historical Metrics
+vpsRouter.get('/:id/metrics', requireAuth, validateParams(idParamSchema), validateQuery(metricsQuerySchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+
+  try {
+    const hours = (req.query.hours as any) || 24;
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const metrics = await prisma.historicalMetric.findMany({
+      where: { vpsId, timestamp: { gte: since } },
+      orderBy: { timestamp: 'asc' }
+    });
+    res.json(metrics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Bulk commands
-vpsRouter.post('/bulk/command', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.post('/bulk/command', requireAuth, validate(schemas.bulkCommand), async (req: AuthRequest, res: any) => {
   const { vpsIds, command } = req.body;
-  if (!Array.isArray(vpsIds) || !command) return res.status(400).json({ error: 'Invalid input' });
 
   const results: any[] = [];
   for (const vpsId of vpsIds) {
@@ -128,7 +167,7 @@ vpsRouter.post('/bulk/command', requireAuth, async (req: AuthRequest, res: any) 
 });
 
 // List Directory
-vpsRouter.get('/:id/files', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.get('/:id/files', requireAuth, validateParams(idParamSchema), validateQuery(fileQuerySchema), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const dirPath = (req.query.path as string) || '/';
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
@@ -142,10 +181,9 @@ vpsRouter.get('/:id/files', requireAuth, async (req: AuthRequest, res: any) => {
 });
 
 // Read File
-vpsRouter.get('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.get('/:id/file', requireAuth, validateParams(idParamSchema), validateQuery(fileQuerySchema), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const filePath = req.query.path as string;
-  if (!filePath) return res.status(400).json({ error: 'Path required' });
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
@@ -157,10 +195,9 @@ vpsRouter.get('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
 });
 
 // Write File
-vpsRouter.put('/:id/file', requireAuth, async (req: AuthRequest, res: any) => {
+vpsRouter.put('/:id/file', requireAuth, validateParams(idParamSchema), validate(schemas.writeFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const { path: filePath, content } = req.body;
-  if (!filePath || content === undefined) return res.status(400).json({ error: 'Path and content required' });
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {

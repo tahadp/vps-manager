@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../prisma';
 import { requireAuth } from '../middlewares/authMiddleware';
+import { validate, schemas } from '../middlewares/validation';
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get user's rules
 router.get('/', requireAuth, async (req: any, res) => {
@@ -20,9 +20,9 @@ router.get('/', requireAuth, async (req: any, res) => {
 });
 
 // Create rule
-router.post('/', requireAuth, async (req: any, res) => {
+router.post('/', requireAuth, validate(schemas.createRule), async (req: any, res) => {
   try {
-    const { vpsId, metric, condition, threshold, durationMin, action } = req.body;
+    const { vpsId, metric, condition, threshold, durationMin, action, script } = req.body;
     
     // Validate vpsId if provided
     if (vpsId) {
@@ -42,7 +42,8 @@ router.post('/', requireAuth, async (req: any, res) => {
         condition,
         threshold: parseFloat(threshold),
         durationMin: parseInt(durationMin),
-        action
+        action,
+        script: action === 'CUSTOM_SCRIPT' ? script : null
       }
     });
     

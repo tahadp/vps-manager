@@ -28,7 +28,8 @@ export default function Settings() {
     condition: '>',
     threshold: 90,
     durationMin: 10,
-    action: 'NOTIFY_ONLY'
+    action: 'NOTIFY_ONLY',
+    script: ''
   });
   
   const [loading, setLoading] = useState(true);
@@ -385,9 +386,26 @@ export default function Settings() {
                   >
                     <option value="NOTIFY_ONLY">Notify Only</option>
                     <option value="RESTART">Restart</option>
+                    <option value="CUSTOM_SCRIPT">Custom Script</option>
                   </select>
                 </div>
               </div>
+              
+              {/* Custom Script Input */}
+              {newRule.action === 'CUSTOM_SCRIPT' && (
+                <div className="mb-5">
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Script to Execute</label>
+                  <textarea 
+                    className="w-full p-3 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary font-mono focus:outline-none focus:border-brand transition-colors"
+                    rows={4}
+                    placeholder="#!/bin/bash&#10;# Your script here&#10;echo 'Hello World'"
+                    value={newRule.script} 
+                    onChange={e => setNewRule({...newRule, script: e.target.value})}
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">This script will be executed on the target VPS when the rule triggers.</p>
+                </div>
+              )}
+              
               <button onClick={handleAddRule} className="w-full sm:w-auto px-5 py-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-primary rounded-lg text-sm font-medium transition-colors border border-border-DEFAULT">
                 Create Rule
               </button>

@@ -31,7 +31,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
       const token = localStorage.getItem('token');
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/vps`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -3,7 +3,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 import { prisma } from './prisma';
 
-const PROTO_PATH = path.join(__dirname, '../proto/vps.proto');
+const PROTO_PATH = path.join(__dirname, '../../proto/vps.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
@@ -18,18 +18,27 @@ const AgentService = protoDescriptor.vps.AgentService;
 
 const AGENT_PORT = 50052;
 
+// Connection cache to avoid leaking gRPC connections
+const clientCache = new Map<string, any>();
+
 /**
- * Helper to get a gRPC client for a specific VPS.
+ * Helper to get a gRPC client for a specific VPS (cached).
  */
 export async function getAgentClient(vpsId: string): Promise<any> {
+  if (clientCache.has(vpsId)) {
+    return clientCache.get(vpsId)!;
+  }
+
   const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
   if (!vps) throw new Error('VPS not found');
   if (!vps.ipAddress) throw new Error('VPS IP address is missing');
 
-  return new AgentService(
+  const client = new AgentService(
     `${vps.ipAddress}:${AGENT_PORT}`,
     grpc.credentials.createInsecure()
   );
+  clientCache.set(vpsId, client);
+  return client;
 }
 
 export async function executeCommand(vpsId: string, command: string): Promise<{ success: boolean; output: string }> {

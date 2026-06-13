@@ -50,8 +50,16 @@ function SortableVpsCard(props: any) {
             <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
               {vps.name}
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-status-success"></span>
+                {vps.status === 'ONLINE' ? (
+                  <>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-status-success"></span>
+                  </>
+                ) : vps.status === 'MAINTENANCE' ? (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-status-warning"></span>
+                ) : (
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-status-error"></span>
+                )}
               </span>
             </h3>
             <p className="text-xs text-text-muted mt-0.5 font-mono">{vps.ipAddress}</p>
@@ -169,6 +177,7 @@ export default function Dashboard() {
   const [screenshots, setScreenshots] = useState<Record<string, string>>({});
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
   
   // Bulk Selection
   const [selectedVps, setSelectedVps] = useState<string[]>([]);
@@ -186,37 +195,92 @@ export default function Dashboard() {
     }
     setUser(JSON.parse(storedUser || '{}'));
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (!Array.isArray(data)) return;
-        setVpsList(data);
-        setLoading(false);
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
+      auth: { token },
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 30000,
+      timeout: 20000
+    });
 
-        const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-          auth: { token }
-        });
+    // Bağlantı durumu takibi
+    socket.on('connect', () => {
+      setConnectionStatus('connected');
+      console.log('WebSocket connected');
+      // Tüm VPS'ler için subscribe
+      fetchVpsList(token, socket);
+    });
 
-        socket.on('connect', () => {
-          data.forEach(vps => socket.emit('subscribe_vps', vps.id));
-        });
+    socket.on('disconnect', () => {
+      setConnectionStatus('disconnected');
+      console.log('WebSocket disconnected');
+    });
 
-        socket.on('telemetry_update', (update) => {
-          setMetricsMap(prev => ({ ...prev, [update.vpsId]: update }));
-        });
+    socket.on('reconnecting', (attemptNumber: number) => {
+      setConnectionStatus('reconnecting');
+      console.log(`WebSocket reconnecting (attempt ${attemptNumber})`);
+    });
 
-        socket.on('screenshot_update', (update) => {
-          setScreenshots(prev => ({ ...prev, [update.vpsId]: update.imageData }));
-        });
+    socket.on('connect_error', (error: Error) => {
+      console.error('WebSocket connection error:', error.message);
+    });
 
-        return () => socket.disconnect();
-      })
-      .catch(() => {
-        setLoading(false);
-      });
+    // Telemetry ve screenshot event'leri
+    socket.on('telemetry_update', (update) => {
+      setMetricsMap(prev => ({ ...prev, [update.vpsId]: update }));
+    });
+
+    socket.on('screenshot_update', (update) => {
+      setScreenshots(prev => ({ ...prev, [update.vpsId]: update.imageData }));
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, [router]);
+
+  const fetchVpsList = async (token: string, socket: any) => {
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+      
+      // localStorage'dan kaydedilmiş sıralamayı al
+      const savedOrder = localStorage.getItem('vps_order');
+      if (savedOrder) {
+        try {
+          const orderIds = JSON.parse(savedOrder);
+          // Sıralamayı uygula
+          const sortedData = [...data].sort((a, b) => {
+            const indexA = orderIds.indexOf(a.id);
+            const indexB = orderIds.indexOf(b.id);
+            // Sıralamada olmayanlar sona gider
+            if (indexA === -1 && indexB === -1) return 0;
+            if (indexA === -1) return 1;
+            if (indexB === -1) return -1;
+            return indexA - indexB;
+          });
+          setVpsList(sortedData);
+        } catch (e) {
+          // JSON parse hatası, orijinal sıralamayı kullan
+          setVpsList(data);
+        }
+      } else {
+        setVpsList(data);
+      }
+      
+      setLoading(false);
+
+      // Her VPS için subscribe
+      data.forEach(vps => socket.emit('subscribe_vps', vps.id));
+    } catch (error) {
+      console.error('Failed to fetch VPS list:', error);
+      setLoading(false);
+    }
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedVps(prev => prev.includes(id) ? prev.filter(vId => vId !== id) : [...prev, id]);
@@ -264,7 +328,13 @@ export default function Dashboard() {
         const oldIndex = items.findIndex(item => item.id === active.id);
         const newIndex = items.findIndex(item => item.id === over.id);
         
-        return arrayMove(items, oldIndex, newIndex);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+        
+        // Yeni sıralamayı localStorage'a kaydet
+        const orderIds = newItems.map(item => item.id);
+        localStorage.setItem('vps_order', JSON.stringify(orderIds));
+        
+        return newItems;
       });
     }
   };
@@ -306,6 +376,16 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-4">
+          {/* Connection Status */}
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${
+              connectionStatus === 'connected' ? 'bg-status-success' :
+              connectionStatus === 'reconnecting' ? 'bg-status-warning animate-pulse' :
+              'bg-status-error'
+            }`} />
+            <span className="text-xs text-text-muted capitalize">{connectionStatus}</span>
+          </div>
+
           <AnimatePresence>
             {selectedVps.length > 0 && (
               <motion.div 

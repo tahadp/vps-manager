@@ -8,6 +8,7 @@
 
 # AI Skills
 .agent/skills
+.commandcode
 
 # Tests
 /tests
@@ -26,6 +27,7 @@ build/
 *.dll
 *.so
 *.dylib
+/agent/config.json
 
 # Docker
 .docker/

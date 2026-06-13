@@ -34,7 +34,7 @@
   font-display: swap;
 }
 
-/* CSS Custom Properties */
+/* CSS Custom Properties - Dark Theme (default) */
 :root {
   /* Brand colors */
   --color-brand: #8251EE;
@@ -84,6 +84,29 @@
   --transition-fast: 150ms ease;
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
+}
+
+/* Light Theme */
+.light {
+  --color-brand: #7C3AED;
+  --color-brand-hover: #6D28D9;
+  --color-brand-light: #8B5CF6;
+  --color-brand-subtle: rgba(124, 58, 237, 0.1);
+
+  --color-bg-1: #FFFFFF;
+  --color-bg-2: #F9FAFB;
+  --color-bg-3: #F3F4F6;
+  --color-bg-4: #E5E7EB;
+  --color-bg-5: #D1D5DB;
+  --color-bg-6: #9CA3AF;
+
+  --color-text-primary: #111827;
+  --color-text-secondary: #4B5563;
+  --color-text-muted: #9CA3AF;
+
+  --color-border-subtle: rgba(0, 0, 0, 0.06);
+  --color-border-default: rgba(0, 0, 0, 0.1);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
 }
 
 /* Base styles */

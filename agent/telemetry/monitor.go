@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -20,8 +21,12 @@ type Metrics struct {
 	Timestamp int64
 }
 
-var lastNet *net.IOCountersStat
-var lastTime time.Time
+var (
+	lastNet   *net.IOCountersStat
+	lastTime  time.Time
+	netMu     sync.Mutex
+	initialized bool
+)
 
 func CollectMetrics() (*Metrics, error) {
 	m := &Metrics{Timestamp: time.Now().Unix()}
@@ -50,12 +55,15 @@ func CollectMetrics() (*Metrics, error) {
 	}
 
 	// Network
+	netMu.Lock()
+	defer netMu.Unlock()
+	
 	netStats, err := net.IOCounters(false)
 	if err == nil && len(netStats) > 0 {
 		currentNet := &netStats[0]
 		now := time.Now()
 
-		if lastNet != nil {
+		if initialized && lastNet != nil {
 			duration := now.Sub(lastTime).Seconds()
 			if duration > 0 {
 				m.NetTx = float64(currentNet.BytesSent-lastNet.BytesSent) / duration
@@ -65,6 +73,7 @@ func CollectMetrics() (*Metrics, error) {
 		
 		lastNet = currentNet
 		lastTime = now
+		initialized = true
 	}
 
 	return m, nil

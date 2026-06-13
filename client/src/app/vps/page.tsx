@@ -20,7 +20,7 @@ export default function VpsListPage() {
       return;
     }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/vps`, {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(res => res.json())
@@ -40,7 +40,7 @@ export default function VpsListPage() {
     if (!confirm('Are you sure you want to delete this VPS? This action cannot be undone.')) return;
     const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/api/vps/${id}`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });

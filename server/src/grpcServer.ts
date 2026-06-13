@@ -2,7 +2,7 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 
-const PROTO_PATH = path.join(__dirname, '../proto/vps.proto');
+const PROTO_PATH = path.join(__dirname, '../../proto/vps.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
@@ -65,15 +65,29 @@ server.addService(vpsPackage.BackendService.service, {
   },
   UploadScreenshot: async (call: any, callback: any) => {
     if (!(await checkApiKey(call, callback))) return;
-    // console.log(`[Screenshot] Received for VPS ID: ${call.request.vps_id}`);
-    const redisPublisher = require('./redis').redisPublisher;
     if (redisPublisher) {
       redisPublisher.publish(`screenshot:${call.request.vps_id}`, JSON.stringify({
         vpsId: call.request.vps_id,
         imageData: call.request.image_data.toString('base64')
       }));
     }
+    if (redisCache) {
+      await redisCache.hset('vps_latest_screenshots', call.request.vps_id, call.request.image_data.toString('base64'));
+    }
     callback(null, { success: true });
+  },
+  Heartbeat: async (call: any, callback: any) => {
+    if (!(await checkApiKey(call, callback))) return;
+    try {
+      await prisma.vps.update({
+        where: { id: call.authenticatedVpsId },
+        data: { lastHeartbeat: new Date(), status: 'ONLINE' }
+      });
+      callback(null, { success: true });
+    } catch (err) {
+      console.error('Heartbeat update failed:', err);
+      callback(null, { success: false });
+    }
   }
 });
 
@@ -90,4 +104,6 @@ export const startGrpcServer = () => {
       console.log(`gRPC Server is running on port ${port}`);
     }
   );
+};
+
 };

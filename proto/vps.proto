@@ -8,6 +8,9 @@ service BackendService {
   // Agent sends telemetry & screenshots to Server
   rpc StreamTelemetry (stream TelemetryRequest) returns (TelemetryResponse);
   rpc UploadScreenshot (ScreenshotRequest) returns (ScreenshotResponse);
+  
+  // Agent heartbeat for liveness detection
+  rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
 }
 
 service AgentService {
@@ -45,6 +48,7 @@ message ShellMessage {
 message CommandRequest {
   string vps_id = 1;
   string command = 2; // e.g. "restart", "stop"
+  int32 timeout_seconds = 3; // Timeout in seconds (default 30)
 }
 
 message CommandResponse {
@@ -97,5 +101,14 @@ message ScreenshotRequest {
 }
 
 message ScreenshotResponse {
+  bool success = 1;
+}
+
+message HeartbeatRequest {
+  string vps_id = 1;
+  int64 timestamp = 2;
+}
+
+message HeartbeatResponse {
   bool success = 1;
 }

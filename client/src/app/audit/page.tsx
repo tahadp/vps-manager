@@ -26,7 +26,8 @@ export default function AuditLogs() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        setLogs(await res.json());
+        const json = await res.json();
+        setLogs(json.data || json);
       }
     } catch (err) {}
     setLoading(false);

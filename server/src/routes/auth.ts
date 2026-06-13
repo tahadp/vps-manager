@@ -3,18 +3,15 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
+import { validate, schemas } from '../middlewares/validation';
 
 export const authRouter = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', validate(schemas.register), async (req, res) => {
   const { email, username, password } = req.body;
   
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password required' });
-  }
-
   try {
     const existing = await prisma.user.findFirst({ 
       where: { 
@@ -35,7 +32,7 @@ authRouter.post('/register', async (req, res) => {
         email,
         username,
         password: hashedPassword,
-        status: 'PENDING', // Admin onayı gerekli
+        status: 'PENDING',
         role: 'USER',
       }
     });
@@ -46,14 +43,10 @@ authRouter.post('/register', async (req, res) => {
   }
 });
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', validate(schemas.login), async (req, res) => {
   const { email, username, identifier, password, rememberMe } = req.body;
   
   const loginIdentifier = identifier || email || username;
-
-  if (!loginIdentifier || !password) {
-    return res.status(400).json({ error: 'Identifier and password required' });
-  }
 
   try {
     const user = await prisma.user.findFirst({
@@ -82,13 +75,9 @@ authRouter.post('/login', async (req, res) => {
   }
 });
 
-authRouter.post('/change-password', requireAuth, async (req: AuthRequest, res) => {
+authRouter.post('/change-password', requireAuth, validate(schemas.changePassword), async (req: AuthRequest, res) => {
   const { oldPassword, newPassword } = req.body;
   const userId = req.user?.id;
-
-  if (!oldPassword || !newPassword) {
-    return res.status(400).json({ error: 'Old password and new password are required' });
-  }
 
   if (!userId) {
     return res.status(401).json({ error: 'Unauthorized' });

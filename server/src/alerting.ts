@@ -34,6 +34,32 @@ export const initAlertingEngine = () => {
   refreshRules();
   setInterval(refreshRules, 30000);
   
+  // Offline detection: mark VPS as OFFLINE if no heartbeat for 60 seconds
+  setInterval(async () => {
+    try {
+      const cutoff = new Date(Date.now() - 60000);
+      const staleVps = await prisma.vps.findMany({
+        where: {
+          status: 'ONLINE',
+          lastHeartbeat: { lt: cutoff }
+        }
+      });
+
+      for (const vps of staleVps) {
+        await prisma.vps.update({
+          where: { id: vps.id },
+          data: { status: 'OFFLINE' }
+        });
+        await sendTelegramAlert(
+          vps.userId,
+          `⚠️ VPS ${vps.name} (${vps.ipAddress}) is OFFLINE — no heartbeat received for over 60 seconds.`
+        );
+      }
+    } catch (err) {
+      console.error('Offline detection error:', err);
+    }
+  }, 30000);
+  
   redisSubscriber.on('pmessage', async (pattern, channel, message) => {
     if (channel.startsWith('telemetry:')) {
       try {
@@ -48,7 +74,8 @@ export const initAlertingEngine = () => {
             vpsId: vps.id,
             cpu: data.CPUUsage,
             ram: data.RAMUsage,
-            timestamp: new Date(data.Timestamp * 1000 || Date.now()) // Assuming Timestamp is in seconds, fallback to Date.now
+            disk: data.DiskUsage,
+            timestamp: new Date(data.Timestamp * 1000 || Date.now())
           }
         });
 
@@ -98,6 +125,12 @@ export const initAlertingEngine = () => {
                       await executeCommand(vps.id, rule.customScript);
                     } catch (cmdErr) {
                       console.error('Failed to execute custom script:', cmdErr);
+                    }
+                  } else if (rule.action === 'RESTART') {
+                    try {
+                      await executeCommand(vps.id, 'reboot');
+                    } catch (cmdErr) {
+                      console.error('Failed to execute restart:', cmdErr);
                     }
                   } else {
                      console.log('No custom script defined for action, skipping execution.');
