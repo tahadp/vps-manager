@@ -35,7 +35,6 @@ export function validate(schema: ZodSchema) {
       if (req.body && typeof req.body === 'object') {
         req.body = sanitizeObject(req.body);
       }
-
       const result = schema.safeParse(req.body);
       if (!result.success) {
         const errors = result.error.issues.map((e: any) => ({
@@ -44,7 +43,6 @@ export function validate(schema: ZodSchema) {
         }));
         return res.status(400).json({ error: 'Validation failed', details: errors });
       }
-
       req.body = result.data;
       next();
     } catch (error) {
@@ -91,11 +89,9 @@ export function validateParams(schema: ZodSchema) {
   };
 }
 
-const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-
 export const schemas = {
   register: z.object({
-    email: z.string().email('Invalid email format'),
+    email: z.string().email(),
     username: z.string().min(3).max(50).optional(),
     password: z.string().min(6).max(100)
   }),
@@ -106,7 +102,7 @@ export const schemas = {
     username: z.string().min(1).optional(),
     password: z.string().min(1),
     rememberMe: z.boolean().optional()
-  }).refine(data => data.identifier || data.email || data.username, {
+  }).refine((data: any) => data.identifier || data.email || data.username, {
     message: 'Either identifier, email, or username is required'
   }),
 
@@ -117,15 +113,16 @@ export const schemas = {
 
   createVps: z.object({
     name: z.string().min(1).max(100),
-    ipAddress: z.string().regex(ipRegex, 'Invalid IP address').optional(),
-    os: z.enum(['LINUX', 'WINDOWS']).optional(),
+    id: z.string().optional(),
+    ipAddress: z.string().optional(),
+    os: z.string().optional(),
     userId: z.string().uuid().optional()
   }),
 
   updateVps: z.object({
     name: z.string().min(1).max(100).optional(),
-    ipAddress: z.string().regex(ipRegex).optional(),
-    os: z.enum(['LINUX', 'WINDOWS']).optional(),
+    ipAddress: z.string().optional(),
+    os: z.string().optional(),
     status: z.enum(['ONLINE', 'OFFLINE', 'MAINTENANCE']).optional()
   }),
 
