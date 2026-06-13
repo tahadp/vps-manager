@@ -55,15 +55,18 @@ export async function writeFileToAgent(vpsId: string, path: string, content: Buf
   return { success: !!body?.success, error: body?.error || undefined };
 }
 
-export async function refreshAgent(vpsId: string): Promise<{ success: boolean }> {
+export async function refreshAgent(vpsId: string): Promise<{ success: boolean; message?: string }> {
   if (!isAgentOnline(vpsId)) {
-    return { success: false };
+    return { success: false, message: 'agent_offline' };
   }
+  // Note: RefreshAck confirms the request was ACCEPTED and queued
+  // (Message: "queued"). Actual telemetry/screenshot data arrives
+  // asynchronously on its own streams — NOT in this RPC response.
   const resp = await requestAgent<any>(vpsId, (requestId) => ({
     request_id: requestId,
     refresh: { vps_id: vpsId }
   }), REFRESH_TIMEOUT_MS);
-  return { success: !!resp.body?.refresh_ack?.success };
+  return { success: !!resp.body?.refresh_ack?.success, message: resp.body?.refresh_ack?.message };
 }
 
 export interface ShellSession {

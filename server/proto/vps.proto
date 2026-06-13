@@ -176,4 +176,8 @@ message RefreshRequest {
 
 message RefreshAck {
   bool success = 1;
+  // Semantic: Ack confirms the refresh was ACCEPTED and queued. It does NOT
+  // mean telemetry/screenshot have completed — those arrive on their own
+  // streams. Possible values: "queued" | "stream_busy" | "agent_offline".
+  string message = 2;
 }

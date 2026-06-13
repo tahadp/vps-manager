@@ -628,7 +628,10 @@ func (p *program) handleRefresh(stream pb.BackendService_StreamAgentIOClient, re
 	p.triggerRefresh()
 	_ = stream.Send(&pb.AgentMessage{
 		RequestId: requestId,
-		Body:      &pb.AgentMessage_RefreshAck{RefreshAck: &pb.RefreshAck{Success: true}},
+		Body: &pb.AgentMessage_RefreshAck{RefreshAck: &pb.RefreshAck{
+			Success: true,
+			Message: "queued",
+		}},
 	})
 }
 

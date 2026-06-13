@@ -1764,6 +1764,7 @@ func (x *RefreshRequest) GetVpsId() string {
 type RefreshAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1803,6 +1804,13 @@ func (x *RefreshAck) GetSuccess() bool {
 		return x.Success
 	}
 	return false
+}
+
+func (x *RefreshAck) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
 }
 
 var File_vps_proto protoreflect.FileDescriptor
@@ -1936,10 +1944,11 @@ const file_vps_proto_rawDesc = "" +
 	"\n" +
 	"session_id\x18\x01 \x01(\tR\tsessionId\"'\n" +
 	"\x0eRefreshRequest\x12\x15\n" +
-	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\"&\n" +
+	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\"?\n" +
 	"\n" +
 	"RefreshAck\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\x91\x02\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x15\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\x91\x02\n" +
 	"\x0eBackendService\x12B\n" +
 	"\x0fStreamTelemetry\x12\x15.vps.TelemetryRequest\x1a\x16.vps.TelemetryResponse(\x01\x12C\n" +
 	"\x10UploadScreenshot\x12\x16.vps.ScreenshotRequest\x1a\x17.vps.ScreenshotResponse\x12:\n" +
