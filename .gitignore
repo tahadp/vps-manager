@@ -38,6 +38,10 @@ build/
 .DS_Store
 Thumbs.db
 
-# Markdown Docs
+# Markdown Docs (core dokümanlar push'lanmaz)
 /*.md
 !README.md
+AGENTS.md
+proje.md
+task.md
+implementation_plan.md

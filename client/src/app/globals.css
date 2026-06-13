@@ -88,25 +88,76 @@
 
 /* Light Theme */
 .light {
-  --color-brand: #7C3AED;
-  --color-brand-hover: #6D28D9;
-  --color-brand-light: #8B5CF6;
-  --color-brand-subtle: rgba(124, 58, 237, 0.1);
+  --color-brand: #6D28D9;
+  --color-brand-hover: #5B21B6;
+  --color-brand-light: #7C3AED;
+  --color-brand-subtle: rgba(124, 58, 237, 0.10);
 
-  --color-bg-1: #FFFFFF;
-  --color-bg-2: #F9FAFB;
-  --color-bg-3: #F3F4F6;
-  --color-bg-4: #E5E7EB;
-  --color-bg-5: #D1D5DB;
-  --color-bg-6: #9CA3AF;
+  --color-bg-1: #FAFAF9;
+  --color-bg-2: #F4F4F5;
+  --color-bg-3: #E4E4E7;
+  --color-bg-4: #D4D4D8;
+  --color-bg-5: #A1A1AA;
+  --color-bg-6: #71717A;
 
-  --color-text-primary: #111827;
-  --color-text-secondary: #4B5563;
-  --color-text-muted: #9CA3AF;
+  --color-text-primary: #18181B;
+  --color-text-secondary: #52525B;
+  --color-text-muted: #71717A;
 
   --color-border-subtle: rgba(0, 0, 0, 0.06);
-  --color-border-default: rgba(0, 0, 0, 0.1);
+  --color-border-default: rgba(0, 0, 0, 0.10);
   --color-border-strong: rgba(0, 0, 0, 0.18);
+
+  --color-status-success: #059669;
+  --color-status-warning: #D97706;
+  --color-status-error: #DC2626;
+  --color-status-info: #2563EB;
+
+  color-scheme: light;
+}
+
+.light .glass,
+.light .glass-card,
+.light .glass-panel,
+.light .glass-input,
+.light .glass-overlay {
+  background: var(--color-bg-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--color-border-default);
+}
+
+.light .bg-white\/5,
+.light .bg-white\/10,
+.light .hover\:bg-white\/5:hover,
+.light .hover\:bg-white\/10:hover {
+  background-color: var(--color-bg-3) !important;
+}
+
+.light .text-white\/5,
+.light .text-white\/10 {
+  color: var(--color-border-subtle) !important;
+}
+
+.light .text-white\/80,
+.light .text-white\/70 {
+  color: var(--color-text-secondary) !important;
+}
+
+.light .from-black\/80,
+.light .via-transparent,
+.light .to-black\/20 {
+  --tw-gradient-from: rgba(0,0,0,0) !important;
+  --tw-gradient-to: rgba(0,0,0,0) !important;
+}
+
+.light .bg-black\/50,
+.light .bg-black\/60 {
+  background-color: var(--color-bg-2) !important;
+}
+
+.light .divide-white\/5 > * {
+  border-color: var(--color-border-subtle) !important;
 }
 
 /* Base styles */

@@ -53,6 +53,15 @@ export const initWebSocket = (server: http.Server) => {
       }
     });
 
+    // Generic list-level room for dashboard / inventory live updates
+    socket.on('subscribe_vps_list', () => {
+      socket.join('vps_list');
+    });
+
+    socket.on('unsubscribe_vps_list', () => {
+      socket.leave('vps_list');
+    });
+
     socket.on('pty_connect', async (vpsId: string) => {
       try {
         const user = socket.data.user;
@@ -103,7 +112,7 @@ export const initWebSocket = (server: http.Server) => {
     });
   });
 
-  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', (err: any, count: any) => {
+  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', 'vps_event:*', (err: any, count: any) => {
     if (err) console.error('Redis PSubscribe Error:', err);
   });
 
@@ -114,7 +123,12 @@ export const initWebSocket = (server: http.Server) => {
     } else if (pattern === 'screenshot:*') {
       io.to(`vps_${vpsId}`).emit('screenshot_update', JSON.parse(message));
     } else if (pattern === 'vps_status:*') {
-      io.to(`vps_${vpsId}`).emit('vps_status_update', JSON.parse(message));
+      const payload = JSON.parse(message);
+      io.to(`vps_${vpsId}`).emit('vps_status_update', payload);
+      io.to('vps_list').emit('vps_event', { type: 'STATUS_CHANGED', ...payload });
+    } else if (pattern === 'vps_event:*') {
+      const payload = JSON.parse(message);
+      io.to('vps_list').emit('vps_event', payload);
     }
   });
 };

@@ -10,7 +10,9 @@ import { adminRouter } from './routes/admin';
 import { settingsRouter } from './routes/settings';
 import { auditRouter } from './routes/audit';
 import { rulesRouter } from './routes/rules';
+import { notificationsRouter } from './routes/notifications';
 import { initAlertingEngine } from './alerting';
+import { startMetricsPruneInterval } from './metrics';
 import { authLimiter, apiLimiter } from './middlewares/rateLimit';
 
 dotenv.config({ path: '../.env' });
@@ -34,6 +36,7 @@ app.use('/api/admin', apiLimiter, adminRouter);
 app.use('/api/settings', apiLimiter, settingsRouter);
 app.use('/api/audit', apiLimiter, auditRouter);
 app.use('/api/rules', apiLimiter, rulesRouter);
+app.use('/api/notifications', apiLimiter, notificationsRouter);
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
@@ -48,4 +51,5 @@ server.listen(PORT, () => {
   console.log(`HTTP/WebSocket Server is running on port ${PORT}`);
   startGrpcServer();
   initAlertingEngine();
+  startMetricsPruneInterval();
 });

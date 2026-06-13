@@ -100,3 +100,20 @@ export async function writeFile(vpsId: string, filePath: string, content: Buffer
     });
   });
 }
+
+/**
+ * Trigger the agent to send one immediate telemetry frame and one screenshot.
+ * Uses ExecuteCommand with the special "__refresh__" marker.
+ */
+export async function refreshNow(vpsId: string): Promise<{ success: boolean; output: string }> {
+  const client = await getAgentClient(vpsId);
+  return new Promise((resolve, reject) => {
+    client.ExecuteCommand({ vps_id: vpsId, command: '__refresh__', timeout_seconds: 5 }, { deadline: Date.now() + 8000 }, (err: any, response: any) => {
+      if (err) {
+        if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
+        return reject(err);
+      }
+      resolve(response);
+    });
+  });
+}

@@ -22,7 +22,15 @@ import (
 
 type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
-	vpsID string
+	vpsID     string
+	refreshCh chan struct{}
+}
+
+func (s *AgentServer) triggerRefresh() {
+	select {
+	case s.refreshCh <- struct{}{}:
+	default:
+	}
 }
 
 type agentSettings struct {
@@ -58,6 +66,12 @@ func applySettings(s *pb.VpsSettingsMessage) {
 }
 
 func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest) (*pb.CommandResponse, error) {
+	// Special command: server asked agent to immediately push one telemetry frame + screenshot.
+	if req.Command == "__refresh__" {
+		s.triggerRefresh()
+		return &pb.CommandResponse{Success: true, Output: "Refresh triggered"}, nil
+	}
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.Command("cmd", "/C", req.Command)
@@ -179,13 +193,15 @@ func (a APIKeyAuth) RequireTransportSecurity() bool {
 }
 
 type program struct {
-	cfg    *Config
-	ctx    context.Context
-	cancel context.CancelFunc
+	cfg       *Config
+	ctx       context.Context
+	cancel    context.CancelFunc
+	refreshCh chan struct{}
 }
 
 func (p *program) Start(s service.Service) error {
 	p.ctx, p.cancel = context.WithCancel(context.Background())
+	p.refreshCh = make(chan struct{}, 1)
 	go p.run()
 	return nil
 }
@@ -200,7 +216,7 @@ func (p *program) run() {
 			return
 		}
 		grpcServer := grpc.NewServer()
-		pb.RegisterAgentServiceServer(grpcServer, &AgentServer{vpsID: p.cfg.VpsID})
+		pb.RegisterAgentServiceServer(grpcServer, &AgentServer{vpsID: p.cfg.VpsID, refreshCh: p.refreshCh})
 		log.Printf("Agent gRPC server listening at %v", lis.Addr())
 
 		go func() {
@@ -293,6 +309,30 @@ func (p *program) run() {
 				select {
 				case <-p.ctx.Done():
 					return
+				case <-p.refreshCh:
+					// Drain: send one immediate telemetry frame
+					if metrics, err := telemetry.CollectMetrics(); err == nil {
+						req := &pb.TelemetryRequest{
+							VpsId:     p.cfg.VpsID,
+							CpuUsage:  float32(metrics.CPUUsage),
+							RamUsage:  float32(metrics.RAMUsage),
+							RamTotal:  float32(metrics.RAMTotal),
+							DiskUsage: float32(metrics.DiskUsage),
+							DiskTotal: float32(metrics.DiskTotal),
+							NetTx:     float32(metrics.NetTx),
+							NetRx:     float32(metrics.NetRx),
+							Timestamp: metrics.Timestamp,
+						}
+						if err := stream.Send(req); err != nil {
+							log.Printf("Refresh telemetry send error: %v", err)
+						}
+					}
+				default:
+				}
+
+				select {
+				case <-p.ctx.Done():
+					return
 				default:
 				}
 
@@ -335,6 +375,24 @@ func (p *program) run() {
 		select {
 		case <-p.ctx.Done():
 			return
+		default:
+		}
+
+		// Refresh: take and upload one screenshot immediately (skip headless check)
+		select {
+		case <-p.refreshCh:
+			if !telemetry.IsHeadless() {
+				if data, err := telemetry.CaptureScreenBytes(); err == nil {
+					if _, err := backendClient.UploadScreenshot(p.ctx, &pb.ScreenshotRequest{
+						VpsId:     p.cfg.VpsID,
+						ImageData: data,
+					}); err != nil {
+						log.Printf("Refresh screenshot upload failed: %v", err)
+					}
+				} else {
+					log.Printf("Refresh screenshot capture failed: %v", err)
+				}
+			}
 		default:
 		}
 

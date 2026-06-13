@@ -1,10 +1,19 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
-import Editor from '@monaco-editor/react';
-import { 
-  Folder, FileText, Save, ArrowUp, AlertCircle, Loader2, 
+import dynamic from 'next/dynamic';
+import {
+  Folder, FileText, Save, ArrowUp, AlertCircle, Loader2,
   Trash2, Plus, Edit3, Download, Upload, FolderPlus, MoreVertical
 } from 'lucide-react';
+
+const Editor = dynamic(() => import('@monaco-editor/react'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full text-text-muted">
+      <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading editor…
+    </div>
+  )
+});
 
 interface FileManagerProps {
   vpsId: string;
@@ -45,8 +54,8 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState('');
   const [saving, setSaving] = useState(false);
-  const [loadingFiles, setLoadingFiles] = useState(false);
-  const [loadingContent, setLoadingContent] = useState(false);
+  const [loadingFiles, setLoadingFiles] = useState(true); // start true
+  const [loadingContent, setLoadingContent] = useState(true); // start true on mount
   const [error, setError] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: any } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -59,6 +68,12 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
   useEffect(() => {
     fetchFiles(currentPath);
   }, [currentPath]);
+
+  useEffect(() => {
+    // After initial load completes, mark content loader off
+    const t = setTimeout(() => setLoadingContent(false), 100);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const close = () => setContextMenu(null);
@@ -266,9 +281,7 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     <div className={className || 'flex h-full'}>
       <input ref={uploadRef} type="file" className="hidden" onChange={uploadFile} />
 
-      {/* File Tree */}
       <div className="w-1/3 border-r border-border-DEFAULT p-2 flex flex-col bg-neutral-bg1/50">
-        {/* Path bar + Actions */}
         <div className="px-3 py-2 text-xs font-mono text-text-secondary bg-neutral-bg2 rounded-lg border border-border-subtle mb-2 flex items-center gap-2">
           <span className="truncate flex-1">{currentPath}</span>
           <button onClick={navigateUp} className="text-text-muted hover:text-text-primary shrink-0" title="Go up">
@@ -276,7 +289,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </button>
         </div>
 
-        {/* Action buttons */}
         <div className="flex gap-1 mb-2">
           <button onClick={() => setCreateModal({ type: 'file' })} className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs bg-neutral-bg2 hover:bg-neutral-bg3 text-text-secondary hover:text-text-primary rounded-lg border border-border-subtle transition-colors" title="New File">
             <Plus className="w-3 h-3" /> File
@@ -289,7 +301,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </button>
         </div>
 
-        {/* Error Banner */}
         {error && (
           <div className="mb-2 p-2 bg-status-error/10 border border-status-error/20 rounded-lg text-xs text-status-error flex items-start gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -298,7 +309,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </div>
         )}
 
-        {/* Binary Warning */}
         {binaryWarning && (
           <div className="mb-2 p-2 bg-status-warning/10 border border-status-warning/20 rounded-lg text-xs text-status-warning flex items-start gap-1.5">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -307,7 +317,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </div>
         )}
 
-        {/* Create Modal */}
         {createModal && (
           <div className="mb-2 p-2 bg-neutral-bg2 border border-brand/30 rounded-lg">
             <div className="text-xs font-medium text-text-primary mb-1.5">New {createModal.type === 'file' ? 'File' : 'Folder'}</div>
@@ -327,7 +336,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </div>
         )}
 
-        {/* File List */}
         <div className="flex-1 overflow-y-auto space-y-1 pr-1">
           {currentPath !== '/' && !createModal && (
             <div
@@ -401,7 +409,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
         </div>
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
         <div
           className="fixed z-50 bg-neutral-bg2 border border-border-DEFAULT rounded-lg shadow-xl py-1 min-w-[160px]"
@@ -435,7 +442,6 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
         </div>
       )}
 
-      {/* Editor */}
       <div className="w-2/3 flex flex-col">
         {selectedFile ? (
           <>
@@ -483,9 +489,18 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-text-muted">
-            <FileText className="w-12 h-12 mb-3 opacity-20" />
-            Select a file to edit
-            <span className="text-xs mt-1">Right-click for more options</span>
+            {loadingContent ? (
+              <>
+                <Loader2 className="w-6 h-6 mb-2 animate-spin" />
+                <span className="text-sm">Initializing file manager…</span>
+              </>
+            ) : (
+              <>
+                <FileText className="w-12 h-12 mb-3 opacity-20" />
+                Select a file to edit
+                <span className="text-xs mt-1">Right-click for more options</span>
+              </>
+            )}
           </div>
         )}
       </div>

@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Server, Settings, ShieldAlert, LogOut } from 'lucide-react';
+import { LayoutDashboard, Server, Settings, ShieldAlert, LogOut, Bell } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -15,6 +15,7 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'VPS List', href: '/vps', icon: Server },
+  { name: 'Alerts', href: '/alerts', icon: Bell },
   { name: 'Audit Logs', href: '/audit', icon: ShieldAlert },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -67,7 +68,7 @@ export function Sidebar() {
       </div>
 
       <div className="mt-auto">
-        <button 
+        <button
           onClick={() => {
             localStorage.removeItem('token');
             localStorage.removeItem('user');

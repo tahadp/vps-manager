@@ -117,6 +117,7 @@ export const schemas = {
     id: z.string().optional(),
     ipAddress: z.string().optional(),
     os: z.string().optional(),
+    customOsName: z.string().max(100).optional(),
     userId: z.string().uuid().optional()
   }),
 
@@ -138,13 +139,23 @@ export const schemas = {
 
   createRule: z.object({
     vpsId: z.string().uuid().optional(),
-    metric: z.enum(['CPU', 'RAM', 'DISK', 'NET']),
-    condition: z.enum(['GT', 'LT', 'EQ', 'GTE', 'LTE']),
-    threshold: z.number().min(0).max(100),
-    durationMin: z.number().int().min(1).max(1440),
-    action: z.enum(['ALERT', 'RESTART', 'CUSTOM_SCRIPT']),
+    metric: z.enum(['CPU', 'RAM', 'DISK', 'OFFLINE']).optional(),
+    condition: z.enum(['GT', 'LT', 'EQ', 'GTE', 'LTE']).optional(),
+    threshold: z.number().min(0).max(100).optional(),
+    durationMin: z.number().int().min(1).max(1440).optional(),
+    offlineThresholdMin: z.number().int().min(1).max(10080).optional(),
+    customMessage: z.string().max(2000).optional(),
+    restartOnAlert: z.boolean().optional(),
+    action: z.enum(['ALERT', 'RESTART', 'CUSTOM_SCRIPT', 'ALERT_AND_RESTART', 'NOTIFY_ONLY']),
     script: z.string().max(5000).optional()
-  }),
+  }).refine((data: any) => {
+    // OFFLINE rules: no metric threshold required, but offlineThresholdMin is
+    if (data.metric === 'OFFLINE' || data.metric === undefined) {
+      return data.offlineThresholdMin !== undefined;
+    }
+    // Metric rules: must have threshold and duration
+    return data.threshold !== undefined && data.durationMin !== undefined;
+  }, { message: 'Invalid rule configuration: metric rules need threshold+duration; offline rules need offlineThresholdMin' }),
 
   readFile: z.object({
     path: z.string().min(1).max(1000)

@@ -1,7 +1,9 @@
 "use client";
 import React from 'react';
-import { Bell, Search, User, Sun, Moon } from 'lucide-react';
+import { Search, Sun, Moon } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import NotificationPanel from '../NotificationPanel';
+import UserMenu from '../UserMenu';
 
 export function Topbar() {
   const { theme, setTheme } = useTheme();
@@ -22,8 +24,8 @@ export function Topbar() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 ml-4">
-        <button 
+      <div className="flex items-center gap-3 ml-4">
+        <button
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           className="p-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors"
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
@@ -31,14 +33,8 @@ export function Topbar() {
           {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
 
-        <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors relative">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand shadow-glow" />
-        </button>
-        
-        <div className="h-8 w-8 rounded-full bg-neutral-bg3 border border-border flex items-center justify-center cursor-pointer hover:border-brand-light transition-colors">
-          <User className="w-4 h-4 text-text-secondary" />
-        </div>
+        <NotificationPanel />
+        <UserMenu />
       </div>
     </header>
   );

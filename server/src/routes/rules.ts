@@ -22,9 +22,11 @@ router.get('/', requireAuth, async (req: any, res) => {
 // Create rule
 router.post('/', requireAuth, validate(schemas.createRule), async (req: any, res) => {
   try {
-    const { vpsId, metric, condition, threshold, durationMin, action, script } = req.body;
-    
-    // Validate vpsId if provided
+    const {
+      vpsId, metric, condition, threshold, durationMin,
+      offlineThresholdMin, customMessage, restartOnAlert, action, script
+    } = req.body;
+
     if (vpsId) {
       const vps = await prisma.vps.findFirst({
         where: { id: vpsId, userId: req.user.id }
@@ -38,18 +40,55 @@ router.post('/', requireAuth, validate(schemas.createRule), async (req: any, res
       data: {
         userId: req.user.id,
         vpsId: vpsId || null,
-        metric,
-        condition,
-        threshold: parseFloat(threshold),
-        durationMin: parseInt(durationMin),
+        metric: metric || null,
+        condition: condition || null,
+        threshold: threshold !== undefined ? parseFloat(threshold) : null,
+        durationMin: durationMin !== undefined ? parseInt(durationMin) : null,
+        offlineThresholdMin: offlineThresholdMin !== undefined ? parseInt(offlineThresholdMin) : null,
+        customMessage: customMessage || null,
+        restartOnAlert: !!restartOnAlert,
         action,
-        script: action === 'CUSTOM_SCRIPT' ? script : null
+        customScript: action === 'CUSTOM_SCRIPT' ? script : null
       }
     });
-    
+
     res.status(201).json(rule);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create rule' });
+  }
+});
+
+// Update rule
+router.put('/:id', requireAuth, validate(schemas.createRule), async (req: any, res) => {
+  try {
+    const existing = await prisma.alertRule.findFirst({
+      where: { id: req.params.id, userId: req.user.id }
+    });
+    if (!existing) return res.status(404).json({ error: 'Rule not found' });
+
+    const {
+      vpsId, metric, condition, threshold, durationMin,
+      offlineThresholdMin, customMessage, restartOnAlert, action, script
+    } = req.body;
+
+    const updated = await prisma.alertRule.update({
+      where: { id: req.params.id },
+      data: {
+        vpsId: vpsId || null,
+        metric: metric || null,
+        condition: condition || null,
+        threshold: threshold !== undefined ? parseFloat(threshold) : null,
+        durationMin: durationMin !== undefined ? parseInt(durationMin) : null,
+        offlineThresholdMin: offlineThresholdMin !== undefined ? parseInt(offlineThresholdMin) : null,
+        customMessage: customMessage || null,
+        restartOnAlert: !!restartOnAlert,
+        action,
+        customScript: action === 'CUSTOM_SCRIPT' ? script : null
+      }
+    });
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update rule' });
   }
 });
 
@@ -59,7 +98,7 @@ router.delete('/:id', requireAuth, async (req: any, res) => {
     const rule = await prisma.alertRule.findFirst({
       where: { id: req.params.id, userId: req.user.id }
     });
-    
+
     if (!rule) {
       return res.status(404).json({ error: 'Rule not found' });
     }

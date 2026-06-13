@@ -1,10 +1,19 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
-import { executeCommand, listDirectory, readFile, writeFile } from '../grpcClient';
+import { executeCommand, listDirectory, readFile, writeFile, refreshNow } from '../grpcClient';
+import { redisPublisher } from '../redis';
 import { OsType } from '@prisma/client';
 import { validate, validateQuery, validateParams, schemas } from '../middlewares/validation';
 import { z } from 'zod';
+
+const publishVpsEvent = (type: 'ADDED' | 'DELETED' | 'STATUS_CHANGED' | 'RENAMED', payload: any) => {
+  try {
+    redisPublisher.publish('vps_event:global', JSON.stringify({ type, ...payload }));
+  } catch (err) {
+    console.error('vps_event publish failed:', err);
+  }
+};
 
 export const vpsRouter = Router();
 
@@ -30,19 +39,52 @@ const vpsSettingsSchema = z.object({
   screenshotIntervalSec: z.number().int().min(5).max(3600).optional(),
   telemetryIntervalSec: z.number().int().min(1).max(60).optional(),
   ramDiskVisible: z.boolean().optional(),
-  networkVisible: z.boolean().optional()
+  networkVisible: z.boolean().optional(),
+  telegramEnabled: z.boolean().optional(),
+  customAlertMessage: z.string().max(500).optional(),
+  visibleCharts: z.array(z.enum(['cpu', 'ram', 'disk', 'network'])).max(4).optional()
+});
+const userPrefsSchema = z.object({
+  dashboardVpsOrder: z.array(z.string().uuid()).max(500).optional(),
+  chartVisibleMetrics: z.array(z.enum(['cpu', 'ram', 'disk', 'network'])).max(4).optional()
 });
 
-// Get all VPS instances
+// Get all VPS instances (with optional filters: status, os, search)
 vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.user!;
-    let vpsList;
-    if (user.role === 'ADMIN') {
-      vpsList = await prisma.vps.findMany({ include: { user: { select: { id: true, email: true } } } });
-    } else {
-      vpsList = await prisma.vps.findMany({ where: { userId: user.id } });
+    const where: any = {};
+    if (user.role !== 'ADMIN') where.userId = user.id;
+
+    if (req.query.status && ['ONLINE', 'OFFLINE', 'MAINTENANCE'].includes(String(req.query.status))) {
+      where.status = String(req.query.status);
     }
+    if (req.query.os) {
+      where.OR = [
+        { os: String(req.query.os) },
+        { customOsName: { contains: String(req.query.os), mode: 'insensitive' } }
+      ];
+    }
+    if (req.query.search) {
+      const q = String(req.query.search);
+      const searchOr = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { ipAddress: { contains: q } },
+        { customOsName: { contains: q, mode: 'insensitive' } }
+      ];
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchOr }];
+        delete where.OR;
+      } else {
+        where.OR = searchOr;
+      }
+    }
+
+    const vpsList = await prisma.vps.findMany({
+      where,
+      include: { user: { select: { id: true, email: true } } },
+      orderBy: { name: 'asc' }
+    });
     res.json(vpsList);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch VPS list' });
@@ -69,16 +111,36 @@ vpsRouter.get('/:id', requireAuth, validateParams(idParamSchema), async (req: Au
 // Add a new VPS
 vpsRouter.post('/', requireAuth, validate(schemas.createVps), async (req: AuthRequest, res) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
-  const { name, ipAddress, os, userId } = req.body;
+  const { name, ipAddress, os, customOsName, userId } = req.body;
   try {
-    const osEnum = os?.toUpperCase().includes('WINDOW') ? OsType.WINDOWS : OsType.LINUX;
-    const createData: any = { 
-      name, 
-      ipAddress: ipAddress || "Pending", 
-      os: osEnum || OsType.LINUX, 
-      user: { connect: { id: userId } } 
+    let osEnum: OsType = OsType.LINUX;
+    if (os) {
+      const upper = String(os).toUpperCase();
+      if (upper === 'LINUX' || upper.includes('UBUNTU') || upper.includes('DEBIAN') || upper.includes('CENTOS') || upper.includes('FEDORA') || upper.includes('ARCH')) {
+        osEnum = OsType.LINUX;
+      } else if (upper === 'WINDOWS' || upper.includes('WINDOW')) {
+        osEnum = OsType.WINDOWS;
+      } else if (upper === 'OTHER') {
+        if (!customOsName || !String(customOsName).trim()) {
+          return res.status(400).json({ error: 'customOsName is required when os is "Other"' });
+        }
+        osEnum = OsType.OTHER;
+      } else {
+        osEnum = OsType.OTHER;
+        if (!customOsName || !String(customOsName).trim()) {
+          return res.status(400).json({ error: 'customOsName is required for this OS' });
+        }
+      }
+    }
+
+    const createData: any = {
+      name,
+      ipAddress: ipAddress || "Pending",
+      os: osEnum,
+      customOsName: osEnum === OsType.OTHER ? String(customOsName).trim() : null,
+      user: { connect: { id: userId } }
     };
-    
+
     const newVps = await prisma.vps.create({
       data: {
         ...createData,
@@ -92,6 +154,7 @@ vpsRouter.post('/', requireAuth, validate(schemas.createVps), async (req: AuthRe
         }
       }
     });
+    publishVpsEvent('ADDED', { vpsId: newVps.id, name: newVps.name, status: newVps.status, userId: newVps.userId });
     res.json(newVps);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to add VPS', details: error.message });
@@ -112,6 +175,7 @@ vpsRouter.put('/:id', requireAuth, validateParams(idParamSchema), validate(schem
       where: { id: id as string },
       data: dataToUpdate
     });
+    publishVpsEvent('STATUS_CHANGED', { vpsId: updatedVps.id, status: updatedVps.status, name: updatedVps.name, userId: updatedVps.userId });
     res.json(updatedVps);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update VPS' });
@@ -123,7 +187,8 @@ vpsRouter.delete('/:id', requireAuth, validateParams(idParamSchema), async (req:
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can delete VPS' });
   const { id } = req.params;
   try {
-    await prisma.vps.delete({ where: { id: id as string } });
+    const deleted = await prisma.vps.delete({ where: { id: id as string } });
+    publishVpsEvent('DELETED', { vpsId: deleted.id, userId: deleted.userId });
     res.json({ message: 'VPS deleted successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete VPS' });
@@ -143,6 +208,38 @@ vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), valid
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Manual refresh: ask the agent to immediately push one telemetry frame + screenshot
+vpsRouter.post('/:id/refresh', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const result = await refreshNow(vpsId);
+    await logAudit(req.user!.id, vpsId, 'REFRESH', 'Manual refresh requested');
+    res.json({ ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk refresh
+vpsRouter.post('/bulk/refresh', requireAuth, validate(schemas.bulkCommand), async (req: AuthRequest, res: any) => {
+  const { vpsIds } = req.body;
+  const results: any[] = [];
+  for (const vpsId of vpsIds) {
+    if (!await checkVpsAccess(vpsId, req.user)) {
+      results.push({ vpsId, success: false, error: 'Unauthorized' });
+      continue;
+    }
+    try {
+      const r = await refreshNow(vpsId);
+      results.push({ vpsId, success: true, data: r });
+    } catch (err: any) {
+      results.push({ vpsId, success: false, error: err.message });
+    }
+  }
+  res.json({ results });
 });
 
 // Get VPS settings
@@ -172,15 +269,22 @@ vpsRouter.put('/:id/settings', requireAuth, validateParams(idParamSchema), valid
   const vpsId = req.params.id as string;
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
   try {
+    const updateData: any = { ...req.body };
+    if (req.body.visibleCharts !== undefined) {
+      updateData.visibleCharts = JSON.stringify(req.body.visibleCharts);
+    }
     const settings = await prisma.vpsSettings.upsert({
       where: { vpsId },
-      update: req.body,
+      update: updateData,
       create: {
         vpsId,
         screenshotIntervalSec: req.body.screenshotIntervalSec ?? 30,
         telemetryIntervalSec: req.body.telemetryIntervalSec ?? 1,
         ramDiskVisible: req.body.ramDiskVisible ?? true,
-        networkVisible: req.body.networkVisible ?? true
+        networkVisible: req.body.networkVisible ?? true,
+        telegramEnabled: req.body.telegramEnabled ?? true,
+        customAlertMessage: req.body.customAlertMessage ?? null,
+        visibleCharts: req.body.visibleCharts ? JSON.stringify(req.body.visibleCharts) : JSON.stringify(['cpu', 'ram', 'disk', 'network'])
       }
     });
     res.json(settings);

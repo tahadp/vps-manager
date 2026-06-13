@@ -17,9 +17,13 @@ model User {
   tier      Tier       @default(FREE)
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  lastLogin DateTime?
 
   telegramBotToken String?
   telegramChatId   String?
+
+  dashboardVpsOrder   String? // JSON array of VPS IDs (user-level drag/drop order)
+  chartVisibleMetrics String? // JSON array of metric keys (cpu|ram|disk|network)
 
   vpsList    Vps[]
   auditLogs  AuditLog[]
@@ -31,6 +35,7 @@ model Vps {
   name          String
   ipAddress     String
   os            OsType
+  customOsName  String?
   status        VpsState  @default(OFFLINE)
   apiKey        String    @unique @default(uuid())
   lastHeartbeat DateTime?
@@ -50,6 +55,9 @@ model VpsSettings {
   telemetryIntervalSec  Int      @default(1)
   ramDiskVisible        Boolean  @default(true)
   networkVisible        Boolean  @default(true)
+  telegramEnabled       Boolean  @default(true)
+  customAlertMessage    String?
+  visibleCharts         String?  @default("[\"cpu\",\"ram\",\"disk\",\"network\"]")
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -85,6 +93,7 @@ enum Tier {
 enum OsType {
   LINUX
   WINDOWS
+  OTHER
 }
 
 enum VpsState {
@@ -94,16 +103,19 @@ enum VpsState {
 }
 
 model AlertRule {
-  id           String   @id @default(uuid())
-  userId       String
-  vpsId        String?
-  metric       String // "CPU", "RAM", "DISK"
-  condition    String // ">", "<"
-  threshold    Float
-  durationMin  Int
-  action       String // "NOTIFY_ONLY", "RESTART", "CUSTOM_SCRIPT"
-  customScript String? // The script to run if action is CUSTOM_SCRIPT
-  createdAt    DateTime @default(now())
+  id                  String   @id @default(uuid())
+  userId              String
+  vpsId               String?
+  metric              String? // "CPU", "RAM", "DISK", "OFFLINE" (null = offline-only rule)
+  condition           String? // ">", "<"
+  threshold           Float?
+  durationMin         Int?
+  offlineThresholdMin Int? // For OFFLINE rules: minutes offline before triggering
+  customMessage       String? // Template with {{vpsName}}, {{ip}}, {{metric}}, {{value}}, {{threshold}}, {{duration}}, {{offlineMinutes}}
+  action              String // "ALERT", "RESTART", "CUSTOM_SCRIPT", "ALERT_AND_RESTART"
+  restartOnAlert      Boolean  @default(false)
+  customScript        String?
+  createdAt           DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   vps  Vps? @relation(fields: [vpsId], references: [id], onDelete: Cascade)
@@ -115,6 +127,9 @@ model HistoricalMetric {
   cpu       Float
   ram       Float
   disk      Float    @default(0)
+  netTx     Float    @default(0)
+  netRx     Float    @default(0)
+  diskTotal Float    @default(0)
   timestamp DateTime @default(now())
 
   @@index([vpsId, timestamp])
