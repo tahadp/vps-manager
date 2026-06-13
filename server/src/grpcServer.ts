@@ -27,14 +27,14 @@ const checkApiKey = async (call: any, callback?: any) => {
     if (callback) callback(err); else call.emit('error', err);
     return false;
   }
-  
+
   const vps = await prisma.vps.findUnique({ where: { apiKey } });
   if (!vps) {
     const err = { code: grpc.status.UNAUTHENTICATED, details: 'Invalid API Key' };
     if (callback) callback(err); else call.emit('error', err);
     return false;
   }
-  
+
   call.authenticatedVpsId = vps.id;
   return true;
 };
@@ -70,9 +70,16 @@ server.addService(vpsPackage.BackendService.service, {
   Heartbeat: async (call: any, callback: any) => {
     if (!(await checkApiKey(call, callback))) return;
     try {
+      const peer = call.getPeer();
+      const agentIp = peer.split(':')[0] || 'Unknown';
+
       await prisma.vps.update({
         where: { id: call.authenticatedVpsId },
-        data: { lastHeartbeat: new Date(), status: 'ONLINE' }
+        data: {
+          lastHeartbeat: new Date(),
+          status: 'ONLINE',
+          ipAddress: agentIp
+        }
       });
       callback(null, { success: true });
     } catch (err) {
