@@ -3,7 +3,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 import { redisPublisher, redisCache } from './redis';
 
-const PROTO_PATH = path.join(__dirname, '../../proto/vps.proto');
+const PROTO_PATH = path.join(__dirname, '../proto/vps.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
