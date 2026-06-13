@@ -65,22 +65,27 @@ export const initWebSocket = (server: http.Server) => {
         ptyStream = agentClient.ShellStream();
         connectedVpsId = vpsId;
 
+        socket.emit('pty_connected');
+
         ptyStream.on('data', (msg: any) => {
           socket.emit('pty_output', msg.data.toString('utf-8'));
         });
 
         ptyStream.on('error', (err: any) => {
           clearAgentClient(vpsId);
-          socket.emit('pty_error', err.message);
+          socket.emit('pty_error', err.message || 'Stream error');
+          socket.emit('pty_closed');
         });
 
         ptyStream.on('end', () => {
           socket.emit('pty_output', '\r\n[Connection closed]\r\n');
+          socket.emit('pty_closed');
         });
 
       } catch (err: any) {
         clearAgentClient(vpsId);
-        socket.emit('pty_error', err.message);
+        socket.emit('pty_error', err.message || 'Failed to start PTY');
+        socket.emit('pty_closed');
       }
     });
 
@@ -98,7 +103,7 @@ export const initWebSocket = (server: http.Server) => {
     });
   });
 
-  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', (err: any, count: any) => {
+  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', (err: any, count: any) => {
     if (err) console.error('Redis PSubscribe Error:', err);
   });
 
@@ -108,6 +113,8 @@ export const initWebSocket = (server: http.Server) => {
       io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
     } else if (pattern === 'screenshot:*') {
       io.to(`vps_${vpsId}`).emit('screenshot_update', JSON.parse(message));
+    } else if (pattern === 'vps_status:*') {
+      io.to(`vps_${vpsId}`).emit('vps_status_update', JSON.parse(message));
     }
   });
 };

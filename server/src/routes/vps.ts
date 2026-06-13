@@ -26,6 +26,12 @@ const logAudit = async (userId: string, target: string, action: string, details:
 const idParamSchema = z.object({ id: z.string().uuid('Invalid VPS ID') });
 const fileQuerySchema = z.object({ path: z.string().max(1000).default('/') });
 const metricsQuerySchema = z.object({ hours: z.string().optional() });
+const vpsSettingsSchema = z.object({
+  screenshotIntervalSec: z.number().int().min(5).max(3600).optional(),
+  telemetryIntervalSec: z.number().int().min(1).max(60).optional(),
+  ramDiskVisible: z.boolean().optional(),
+  networkVisible: z.boolean().optional()
+});
 
 // Get all VPS instances
 vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
@@ -73,7 +79,19 @@ vpsRouter.post('/', requireAuth, validate(schemas.createVps), async (req: AuthRe
       user: { connect: { id: userId } } 
     };
     
-    const newVps = await prisma.vps.create({ data: createData });
+    const newVps = await prisma.vps.create({
+      data: {
+        ...createData,
+        settings: {
+          create: {
+            screenshotIntervalSec: 30,
+            telemetryIntervalSec: 1,
+            ramDiskVisible: true,
+            networkVisible: true
+          }
+        }
+      }
+    });
     res.json(newVps);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to add VPS', details: error.message });
@@ -122,6 +140,50 @@ vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), valid
     const result = await executeCommand(vpsId, command);
     await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Executed: ${command}`);
     res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get VPS settings
+vpsRouter.get('/:id/settings', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const settings = await prisma.vpsSettings.upsert({
+      where: { vpsId },
+      update: {},
+      create: {
+        vpsId,
+        screenshotIntervalSec: 30,
+        telemetryIntervalSec: 1,
+        ramDiskVisible: true,
+        networkVisible: true
+      }
+    });
+    res.json(settings);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update VPS settings
+vpsRouter.put('/:id/settings', requireAuth, validateParams(idParamSchema), validate(vpsSettingsSchema), async (req: AuthRequest, res: any) => {
+  const vpsId = req.params.id as string;
+  if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
+  try {
+    const settings = await prisma.vpsSettings.upsert({
+      where: { vpsId },
+      update: req.body,
+      create: {
+        vpsId,
+        screenshotIntervalSec: req.body.screenshotIntervalSec ?? 30,
+        telemetryIntervalSec: req.body.telemetryIntervalSec ?? 1,
+        ramDiskVisible: req.body.ramDiskVisible ?? true,
+        networkVisible: req.body.networkVisible ?? true
+      }
+    });
+    res.json(settings);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

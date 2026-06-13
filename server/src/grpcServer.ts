@@ -73,16 +73,52 @@ server.addService(vpsPackage.BackendService.service, {
     try {
       const peer = call.getPeer();
       const agentIp = peer.split(':')[0] || 'Unknown';
+      const now = new Date();
 
       await prisma.vps.update({
         where: { id: call.authenticatedVpsId },
         data: {
-          lastHeartbeat: new Date(),
+          lastHeartbeat: now,
           status: 'ONLINE',
           ipAddress: agentIp
         }
       });
-      callback(null, { success: true });
+
+      let settingsMessage: any = null;
+      try {
+        const settings = await prisma.vpsSettings.upsert({
+          where: { vpsId: call.authenticatedVpsId },
+          update: {},
+          create: {
+            vpsId: call.authenticatedVpsId,
+            screenshotIntervalSec: 30,
+            telemetryIntervalSec: 1,
+            ramDiskVisible: true,
+            networkVisible: true
+          }
+        });
+        settingsMessage = {
+          screenshotIntervalSec: settings.screenshotIntervalSec,
+          telemetryIntervalSec: settings.telemetryIntervalSec,
+          ramDiskVisible: settings.ramDiskVisible,
+          networkVisible: settings.networkVisible
+        };
+      } catch (settingsErr) {
+        console.error('Settings load failed (using defaults):', settingsErr);
+      }
+
+      redisPublisher.publish(`vps_status:${call.authenticatedVpsId}`, JSON.stringify({
+        vpsId: call.authenticatedVpsId,
+        status: 'ONLINE',
+        lastHeartbeat: now.toISOString(),
+        ipAddress: agentIp
+      }));
+
+      if (settingsMessage) {
+        callback(null, { success: true, settings: settingsMessage });
+      } else {
+        callback(null, { success: true });
+      }
     } catch (err) {
       console.error('Heartbeat update failed:', err);
       callback(null, { success: false });

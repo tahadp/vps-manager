@@ -1,14 +1,14 @@
 "use client";
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, useRef, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { motion } from "framer-motion";
-import { 
-  Server, Cpu, MemoryStick, HardDrive, TerminalSquare, 
+import {
+  Server, Cpu, MemoryStick, HardDrive, TerminalSquare,
   FolderOpen, MonitorPlay, ArrowLeft, RefreshCw, PowerOff, Play,
   AlertCircle, LineChart as LineChartIcon, Activity, Wifi, WifiOff,
-  Clock, Shield, Image as ImageIcon, ArrowUpDown, Plus, Trash2, 
-  Edit3, Bell, History, Zap, ChevronDown
+  Clock, Shield, Image as ImageIcon, ArrowUpDown, Plus, Trash2,
+  Edit3, Bell, History, Zap, ChevronDown, Save, Network
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import WebPTY from "@/components/Terminal";
@@ -33,15 +33,49 @@ function formatNetworkSpeed(bytesPerSec: number): string {
   return `${mbps.toFixed(2)} MB/s`;
 }
 
-function formatTimeAgo(dateStr: string | null): string {
+function formatTimeAgo(dateStr: string | null, now: number): string {
   if (!dateStr) return "Never";
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
+  const diff = now - new Date(dateStr).getTime();
+  const secs = Math.floor(diff / 1000);
+  if (secs < 5) return "Just now";
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function ChartPanel({ title, unit, color, dataKey, chartData, secondDataKey, secondColor, secondLabel, mainLabel }: {
+  title: string;
+  unit: string;
+  color: string;
+  dataKey: string;
+  chartData: any[];
+  secondDataKey?: string;
+  secondColor?: string;
+  secondLabel?: string;
+  mainLabel?: string;
+}) {
+  return (
+    <div className="bg-neutral-bg2/40 border border-border-subtle rounded-xl p-3 flex flex-col min-h-[180px]">
+      <div className="text-xs font-semibold text-text-muted mb-1">{title}</div>
+      <div className="flex-1 min-h-[150px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 5, right: 16, bottom: 5, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
+            <XAxis dataKey="time" stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} minTickGap={32} />
+            <YAxis stroke="#a1a1aa" fontSize={10} tickLine={false} axisLine={false} unit={unit} domain={[0, unit === '%' ? 100 : 'auto']} allowDataOverflow={false} width={48} />
+            <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px' }} itemStyle={{ color: '#f4f4f5' }} />
+            <Line type="monotone" dataKey={dataKey} name={mainLabel || title} stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
+            {secondDataKey && secondColor && (
+              <Line type="monotone" dataKey={secondDataKey} name={secondLabel || ''} stroke={secondColor} strokeWidth={2} dot={false} isAnimationActive={false} />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 }
 
 export default function VpsDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -54,10 +88,22 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const [telemetry, setTelemetry] = useState<any>({});
   const [chartData, setChartData] = useState<any[]>([]);
   const [chartHours, setChartHours] = useState(24);
-  const [chartMetric, setChartMetric] = useState<'all' | 'cpu' | 'ram'>('all');
+  const [chartMetric, setChartMetric] = useState<'all' | 'cpu' | 'ram' | 'network' | 'disk'>('all');
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [socketStatus, setSocketStatus] = useState<"connecting" | "connected" | "error">("connecting");
   const socketRef = useRef<Socket | null>(null);
+  const [now, setNow] = useState<number>(Date.now());
+
+  // Settings state
+  const [settings, setSettings] = useState<{ screenshotIntervalSec: number; telemetryIntervalSec: number; ramDiskVisible: boolean; networkVisible: boolean }>({
+    screenshotIntervalSec: 30,
+    telemetryIntervalSec: 1,
+    ramDiskVisible: true,
+    networkVisible: true
+  });
+  const [showSettings, setShowSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsMsg, setSettingsMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Confirm modal state
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -116,6 +162,25 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     const token = localStorage.getItem("token");
     if (!token) { router.push("/login"); return; }
 
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    fetch(`${API}/api/vps/${id}/settings`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setSettings(d); })
+      .catch(() => {});
+  }, [id]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) { router.push("/login"); return; }
+
     fetch(`${API}/api/vps/${id}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -124,7 +189,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
       setVps(data);
       setLoading(false);
 
-      const socket = io(API, { auth: { token } });
+      const socket = io(API, { auth: { token }, transports: ['websocket', 'polling'] });
       socketRef.current = socket;
 
       socket.on('connect', () => {
@@ -132,15 +197,19 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
         socket.emit("subscribe_vps", id);
       });
       socket.on('connect_error', () => setSocketStatus("error"));
+      socket.on('disconnect', () => setSocketStatus("error"));
 
       socket.on("telemetry_update", (d) => {
         if (d && d.vpsId === id) {
           setTelemetry(d);
           setChartData(prev => {
             const next = [...prev, {
-              time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+              time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'}),
               cpu: d.CPUUsage,
-              ram: d.RAMUsage
+              ram: d.RAMUsage,
+              disk: d.DiskUsage,
+              netTx: d.NetTx,
+              netRx: d.NetRx
             }];
             return next.slice(-500);
           });
@@ -148,7 +217,20 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
       });
 
       socket.on("screenshot_update", (d) => {
-        if (d && d.vpsId === id && d.imageData) setScreenshot(d.imageData);
+        if (d && d.vpsId === id && d.imageData) {
+          setScreenshot(d.imageData);
+        }
+      });
+
+      socket.on("vps_status_update", (d) => {
+        if (d && d.vpsId === id) {
+          setVps((prev: any) => prev ? {
+            ...prev,
+            status: d.status || prev.status,
+            lastHeartbeat: d.lastHeartbeat || prev.lastHeartbeat,
+            ipAddress: d.ipAddress || prev.ipAddress
+          } : prev);
+        }
       });
 
       fetchChartData(token, chartHours);
@@ -260,6 +342,30 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     const updated = quickCmds.filter((_, i) => i !== idx);
     setQuickCmds(updated);
     localStorage.setItem('quickCmds', JSON.stringify(updated));
+  };
+
+  const saveSettings = async () => {
+    setSavingSettings(true);
+    setSettingsMsg(null);
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API}/api/vps/${id}/settings`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(settings)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSettings(data);
+        setSettingsMsg({ type: 'success', message: 'Settings saved. Agent will pick them up within 10s.' });
+      } else {
+        setSettingsMsg({ type: 'error', message: 'Failed to save settings.' });
+      }
+    } catch {
+      setSettingsMsg({ type: 'error', message: 'Network error.' });
+    }
+    setSavingSettings(false);
+    setTimeout(() => setSettingsMsg(null), 4000);
   };
 
   if (loading) {
@@ -419,7 +525,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                     <h3 className="text-xs font-bold tracking-wider uppercase text-text-muted mb-3 flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> Status</h3>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between"><span className="text-text-muted">Status</span><span className={`font-medium ${vps.status === 'ONLINE' ? 'text-status-success' : vps.status === 'MAINTENANCE' ? 'text-status-warning' : 'text-status-error'}`}>{vps.status}</span></div>
-                      <div className="flex justify-between"><span className="text-text-muted">Last Heartbeat</span><span className="text-text-primary font-mono text-xs flex items-center gap-1"><Clock className="w-3 h-3" />{formatTimeAgo(vps.lastHeartbeat)}</span></div>
+                      <div className="flex justify-between"><span className="text-text-muted">Last Heartbeat</span><span className="text-text-primary font-mono text-xs flex items-center gap-1"><Clock className="w-3 h-3" />{formatTimeAgo(vps.lastHeartbeat, now)}</span></div>
                       <div className="flex justify-between"><span className="text-text-muted">Socket</span><span className={`flex items-center gap-1 ${socketStatus === 'connected' ? 'text-status-success' : socketStatus === 'error' ? 'text-status-error' : 'text-status-warning'}`}>{socketStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{socketStatus}</span></div>
                     </div>
                   </div>
@@ -470,9 +576,12 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                         </div>
                       </div>
                       {/* Network */}
-                      <div className="flex justify-between text-xs pt-1 border-t border-border-subtle">
-                        <span className="text-text-muted flex items-center gap-1"><ArrowUpDown className="w-3 h-3" /> Network</span>
-                        <span className="text-text-primary font-mono">↑{formatNetworkSpeed(telemetry.NetTx || 0)} ↓{formatNetworkSpeed(telemetry.NetRx || 0)}</span>
+                      <div className="flex justify-between items-center text-xs pt-1 border-t border-border-subtle">
+                        <span className="text-text-muted flex items-center gap-1"><Network className="w-3 h-3" /> Network</span>
+                        <div className="font-mono text-text-primary flex flex-col items-end">
+                          <span><span className="text-text-muted">Upload </span>{formatNetworkSpeed(telemetry.NetTx || 0)}</span>
+                          <span><span className="text-text-muted">Download </span>{formatNetworkSpeed(telemetry.NetRx || 0)}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -538,12 +647,12 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
 
             {/* Performance Chart */}
             {activeTab === 'chart' && (
-              <div className="absolute inset-0 bg-neutral-bg1 flex flex-col p-6">
+              <div className="absolute inset-0 bg-neutral-bg1 flex flex-col p-6 overflow-y-auto">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-text-primary">Resource Usage</h2>
                   <div className="flex gap-2">
                     <div className="flex gap-1 bg-neutral-bg2 rounded-lg p-0.5 border border-border-subtle">
-                      {([['all', 'All'], ['cpu', 'CPU'], ['ram', 'RAM']] as const).map(([key, label]) => (
+                      {([['all', 'All'], ['cpu', 'CPU'], ['ram', 'RAM'], ['disk', 'Disk'], ['network', 'Network']] as const).map(([key, label]) => (
                         <button key={key} onClick={() => setChartMetric(key)} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartMetric === key ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}>
                           {label}
                         </button>
@@ -558,26 +667,37 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 w-full min-h-[300px]">
-                  {chartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" vertical={false} />
-                        <XAxis dataKey="time" stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} unit="%" />
-                        <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px' }} itemStyle={{ color: '#f4f4f5' }} />
-                        <Legend />
-                        {(chartMetric === 'all' || chartMetric === 'cpu') && <Line type="monotone" dataKey="cpu" name="CPU" stroke="#8251EE" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />}
-                        {(chartMetric === 'all' || chartMetric === 'ram') && <Line type="monotone" dataKey="ram" name="RAM" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />}
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-text-muted">
-                      <LineChartIcon className="w-12 h-12 mb-3 opacity-20" />
-                      <p className="text-sm">No historical data available yet.</p>
-                    </div>
-                  )}
-                </div>
+                {chartData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center flex-1 text-text-muted">
+                    <LineChartIcon className="w-12 h-12 mb-3 opacity-20" />
+                    <p className="text-sm">No historical data available yet.</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 grid grid-cols-1 gap-4 min-h-0">
+                    {(chartMetric === 'all' || chartMetric === 'cpu') && (
+                      <ChartPanel title="CPU" unit="%" color="#8251EE" dataKey="cpu" chartData={chartData} />
+                    )}
+                    {(chartMetric === 'all' || chartMetric === 'ram') && (
+                      <ChartPanel title="RAM" unit="%" color="#a855f7" dataKey="ram" chartData={chartData} />
+                    )}
+                    {(chartMetric === 'all' || chartMetric === 'disk') && (
+                      <ChartPanel title="Disk" unit="%" color="#3b82f6" dataKey="disk" chartData={chartData} />
+                    )}
+                    {(chartMetric === 'all' || chartMetric === 'network') && (
+                      <ChartPanel
+                        title="Network"
+                        unit="MB/s"
+                        color="#10b981"
+                        dataKey="netTxMB"
+                        chartData={chartData.map(d => ({ ...d, netTxMB: (d.netTx || 0) / (1024 * 1024), netRxMB: (d.netRx || 0) / (1024 * 1024) }))}
+                        secondDataKey="netRxMB"
+                        secondColor="#0ea5e9"
+                        secondLabel="Download"
+                        mainLabel="Upload"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -622,13 +742,51 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
               </div>
               {/* Network */}
               <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
-                <span className="text-xs text-text-muted flex items-center gap-1.5"><ArrowUpDown className="w-3.5 h-3.5" /> Network</span>
-                <div className="text-xs font-mono text-text-primary flex gap-3">
-                  <span className="text-status-success">↑ {formatNetworkSpeed(telemetry.NetTx || 0)}</span>
-                  <span className="text-dataviz-blue">↓ {formatNetworkSpeed(telemetry.NetRx || 0)}</span>
+                <span className="text-xs text-text-muted flex items-center gap-1.5"><Network className="w-3.5 h-3.5" /> Network</span>
+                <div className="text-xs font-mono text-text-primary flex flex-col items-end gap-0.5">
+                  <span><span className="text-text-muted">Upload:</span> <span className="text-status-success">{formatNetworkSpeed(telemetry.NetTx || 0)}</span></span>
+                  <span><span className="text-text-muted">Download:</span> <span className="text-dataviz-blue">{formatNetworkSpeed(telemetry.NetRx || 0)}</span></span>
                 </div>
               </div>
             </div>
+          </motion.div>
+
+          {/* VPS Settings */}
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }} className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-5 backdrop-blur-xl shadow-sm">
+            <button onClick={() => setShowSettings(!showSettings)} className="w-full flex items-center justify-between text-xs font-bold tracking-wider uppercase text-text-muted mb-2">
+              <span className="flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> VPS Settings</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showSettings ? 'rotate-180' : ''}`} />
+            </button>
+            {showSettings && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1">Screenshot Interval (sec)</label>
+                  <input type="number" min={5} max={3600} value={settings.screenshotIntervalSec} onChange={e => setSettings({...settings, screenshotIntervalSec: Math.max(5, Math.min(3600, Number(e.target.value)))})} className="w-full px-2 py-1.5 text-xs bg-neutral-bg1 border border-border-DEFAULT rounded-lg text-text-primary focus:outline-none focus:border-brand" />
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1">Telemetry Interval (sec)</label>
+                  <input type="number" min={1} max={60} value={settings.telemetryIntervalSec} onChange={e => setSettings({...settings, telemetryIntervalSec: Math.max(1, Math.min(60, Number(e.target.value)))})} className="w-full px-2 py-1.5 text-xs bg-neutral-bg1 border border-border-DEFAULT rounded-lg text-text-primary focus:outline-none focus:border-brand" />
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Show RAM/Disk</span>
+                  <button onClick={() => setSettings({...settings, ramDiskVisible: !settings.ramDiskVisible})} className={`w-9 h-5 rounded-full transition-colors ${settings.ramDiskVisible ? 'bg-brand' : 'bg-neutral-bg3'}`}>
+                    <span className={`block w-4 h-4 bg-white rounded-full transition-transform ${settings.ramDiskVisible ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-secondary">Show Network</span>
+                  <button onClick={() => setSettings({...settings, networkVisible: !settings.networkVisible})} className={`w-9 h-5 rounded-full transition-colors ${settings.networkVisible ? 'bg-brand' : 'bg-neutral-bg3'}`}>
+                    <span className={`block w-4 h-4 bg-white rounded-full transition-transform ${settings.networkVisible ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+                {settingsMsg && (
+                  <div className={`text-xs ${settingsMsg.type === 'success' ? 'text-status-success' : 'text-status-error'}`}>{settingsMsg.message}</div>
+                )}
+                <button onClick={saveSettings} disabled={savingSettings} className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs bg-brand hover:bg-brand-hover text-white rounded-lg transition-colors disabled:opacity-50">
+                  <Save className="w-3.5 h-3.5" /> {savingSettings ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            )}
           </motion.div>
 
           {/* Quick Actions */}
@@ -721,7 +879,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                   <div key={log.id} className="p-2 bg-neutral-bg1 border border-border-subtle rounded-lg">
                     <div className="flex justify-between items-start">
                       <span className="text-xs font-mono text-text-primary">{log.action}</span>
-                      <span className="text-[10px] text-text-muted">{formatTimeAgo(log.createdAt)}</span>
+                      <span className="text-[10px] text-text-muted">{formatTimeAgo(log.createdAt, now)}</span>
                     </div>
                     <p className="text-[10px] text-text-muted mt-0.5 truncate">{log.target}</p>
                   </div>

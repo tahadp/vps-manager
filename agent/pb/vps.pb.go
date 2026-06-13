@@ -889,16 +889,85 @@ func (x *HeartbeatRequest) GetTimestamp() int64 {
 	return 0
 }
 
+type VpsSettingsMessage struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	ScreenshotIntervalSec int32                  `protobuf:"varint,1,opt,name=screenshot_interval_sec,json=screenshotIntervalSec,proto3" json:"screenshot_interval_sec,omitempty"`
+	TelemetryIntervalSec  int32                  `protobuf:"varint,2,opt,name=telemetry_interval_sec,json=telemetryIntervalSec,proto3" json:"telemetry_interval_sec,omitempty"`
+	RamDiskVisible        bool                   `protobuf:"varint,3,opt,name=ram_disk_visible,json=ramDiskVisible,proto3" json:"ram_disk_visible,omitempty"`
+	NetworkVisible        bool                   `protobuf:"varint,4,opt,name=network_visible,json=networkVisible,proto3" json:"network_visible,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *VpsSettingsMessage) Reset() {
+	*x = VpsSettingsMessage{}
+	mi := &file_vps_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VpsSettingsMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VpsSettingsMessage) ProtoMessage() {}
+
+func (x *VpsSettingsMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_vps_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VpsSettingsMessage.ProtoReflect.Descriptor instead.
+func (*VpsSettingsMessage) Descriptor() ([]byte, []int) {
+	return file_vps_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *VpsSettingsMessage) GetScreenshotIntervalSec() int32 {
+	if x != nil {
+		return x.ScreenshotIntervalSec
+	}
+	return 0
+}
+
+func (x *VpsSettingsMessage) GetTelemetryIntervalSec() int32 {
+	if x != nil {
+		return x.TelemetryIntervalSec
+	}
+	return 0
+}
+
+func (x *VpsSettingsMessage) GetRamDiskVisible() bool {
+	if x != nil {
+		return x.RamDiskVisible
+	}
+	return false
+}
+
+func (x *VpsSettingsMessage) GetNetworkVisible() bool {
+	if x != nil {
+		return x.NetworkVisible
+	}
+	return false
+}
+
 type HeartbeatResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Settings      *VpsSettingsMessage    `protobuf:"bytes,2,opt,name=settings,proto3" json:"settings,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_vps_proto_msgTypes[15]
+	mi := &file_vps_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -910,7 +979,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_vps_proto_msgTypes[15]
+	mi := &file_vps_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -923,7 +992,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_vps_proto_rawDescGZIP(), []int{15}
+	return file_vps_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *HeartbeatResponse) GetSuccess() bool {
@@ -931,6 +1000,13 @@ func (x *HeartbeatResponse) GetSuccess() bool {
 		return x.Success
 	}
 	return false
+}
+
+func (x *HeartbeatResponse) GetSettings() *VpsSettingsMessage {
+	if x != nil {
+		return x.Settings
+	}
+	return nil
 }
 
 var File_vps_proto protoreflect.FileDescriptor
@@ -997,9 +1073,15 @@ const file_vps_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\"G\n" +
 	"\x10HeartbeatRequest\x12\x15\n" +
 	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\x12\x1c\n" +
-	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\"-\n" +
+	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\"\xd5\x01\n" +
+	"\x12VpsSettingsMessage\x126\n" +
+	"\x17screenshot_interval_sec\x18\x01 \x01(\x05R\x15screenshotIntervalSec\x124\n" +
+	"\x16telemetry_interval_sec\x18\x02 \x01(\x05R\x14telemetryIntervalSec\x12(\n" +
+	"\x10ram_disk_visible\x18\x03 \x01(\bR\x0eramDiskVisible\x12'\n" +
+	"\x0fnetwork_visible\x18\x04 \x01(\bR\x0enetworkVisible\"b\n" +
 	"\x11HeartbeatResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess2\xd5\x01\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x123\n" +
+	"\bsettings\x18\x02 \x01(\v2\x17.vps.VpsSettingsMessageR\bsettings2\xd5\x01\n" +
 	"\x0eBackendService\x12B\n" +
 	"\x0fStreamTelemetry\x12\x15.vps.TelemetryRequest\x1a\x16.vps.TelemetryResponse(\x01\x12C\n" +
 	"\x10UploadScreenshot\x12\x16.vps.ScreenshotRequest\x1a\x17.vps.ScreenshotResponse\x12:\n" +
@@ -1023,7 +1105,7 @@ func file_vps_proto_rawDescGZIP() []byte {
 	return file_vps_proto_rawDescData
 }
 
-var file_vps_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_vps_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_vps_proto_goTypes = []any{
 	(*TelemetryRequest)(nil),   // 0: vps.TelemetryRequest
 	(*TelemetryResponse)(nil),  // 1: vps.TelemetryResponse
@@ -1040,31 +1122,33 @@ var file_vps_proto_goTypes = []any{
 	(*ScreenshotRequest)(nil),  // 12: vps.ScreenshotRequest
 	(*ScreenshotResponse)(nil), // 13: vps.ScreenshotResponse
 	(*HeartbeatRequest)(nil),   // 14: vps.HeartbeatRequest
-	(*HeartbeatResponse)(nil),  // 15: vps.HeartbeatResponse
+	(*VpsSettingsMessage)(nil), // 15: vps.VpsSettingsMessage
+	(*HeartbeatResponse)(nil),  // 16: vps.HeartbeatResponse
 }
 var file_vps_proto_depIdxs = []int32{
 	6,  // 0: vps.DirResponse.files:type_name -> vps.FileItem
-	0,  // 1: vps.BackendService.StreamTelemetry:input_type -> vps.TelemetryRequest
-	12, // 2: vps.BackendService.UploadScreenshot:input_type -> vps.ScreenshotRequest
-	14, // 3: vps.BackendService.Heartbeat:input_type -> vps.HeartbeatRequest
-	3,  // 4: vps.AgentService.ExecuteCommand:input_type -> vps.CommandRequest
-	5,  // 5: vps.AgentService.ListDirectory:input_type -> vps.DirRequest
-	8,  // 6: vps.AgentService.ReadFile:input_type -> vps.FileRequest
-	10, // 7: vps.AgentService.WriteFile:input_type -> vps.WriteRequest
-	2,  // 8: vps.AgentService.ShellStream:input_type -> vps.ShellMessage
-	1,  // 9: vps.BackendService.StreamTelemetry:output_type -> vps.TelemetryResponse
-	13, // 10: vps.BackendService.UploadScreenshot:output_type -> vps.ScreenshotResponse
-	15, // 11: vps.BackendService.Heartbeat:output_type -> vps.HeartbeatResponse
-	4,  // 12: vps.AgentService.ExecuteCommand:output_type -> vps.CommandResponse
-	7,  // 13: vps.AgentService.ListDirectory:output_type -> vps.DirResponse
-	9,  // 14: vps.AgentService.ReadFile:output_type -> vps.FileResponse
-	11, // 15: vps.AgentService.WriteFile:output_type -> vps.WriteResponse
-	2,  // 16: vps.AgentService.ShellStream:output_type -> vps.ShellMessage
-	9,  // [9:17] is the sub-list for method output_type
-	1,  // [1:9] is the sub-list for method input_type
-	1,  // [1:1] is the sub-list for extension type_name
-	1,  // [1:1] is the sub-list for extension extendee
-	0,  // [0:1] is the sub-list for field type_name
+	15, // 1: vps.HeartbeatResponse.settings:type_name -> vps.VpsSettingsMessage
+	0,  // 2: vps.BackendService.StreamTelemetry:input_type -> vps.TelemetryRequest
+	12, // 3: vps.BackendService.UploadScreenshot:input_type -> vps.ScreenshotRequest
+	14, // 4: vps.BackendService.Heartbeat:input_type -> vps.HeartbeatRequest
+	3,  // 5: vps.AgentService.ExecuteCommand:input_type -> vps.CommandRequest
+	5,  // 6: vps.AgentService.ListDirectory:input_type -> vps.DirRequest
+	8,  // 7: vps.AgentService.ReadFile:input_type -> vps.FileRequest
+	10, // 8: vps.AgentService.WriteFile:input_type -> vps.WriteRequest
+	2,  // 9: vps.AgentService.ShellStream:input_type -> vps.ShellMessage
+	1,  // 10: vps.BackendService.StreamTelemetry:output_type -> vps.TelemetryResponse
+	13, // 11: vps.BackendService.UploadScreenshot:output_type -> vps.ScreenshotResponse
+	16, // 12: vps.BackendService.Heartbeat:output_type -> vps.HeartbeatResponse
+	4,  // 13: vps.AgentService.ExecuteCommand:output_type -> vps.CommandResponse
+	7,  // 14: vps.AgentService.ListDirectory:output_type -> vps.DirResponse
+	9,  // 15: vps.AgentService.ReadFile:output_type -> vps.FileResponse
+	11, // 16: vps.AgentService.WriteFile:output_type -> vps.WriteResponse
+	2,  // 17: vps.AgentService.ShellStream:output_type -> vps.ShellMessage
+	10, // [10:18] is the sub-list for method output_type
+	2,  // [2:10] is the sub-list for method input_type
+	2,  // [2:2] is the sub-list for extension type_name
+	2,  // [2:2] is the sub-list for extension extendee
+	0,  // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_vps_proto_init() }
@@ -1078,7 +1162,7 @@ func file_vps_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vps_proto_rawDesc), len(file_vps_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

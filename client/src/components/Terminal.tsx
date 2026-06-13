@@ -56,15 +56,25 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
     term.write('\x1b[90mConnecting to VPS...\x1b[0m\r\n');
 
     socket.on('connect', () => {
+      term.write('\x1b[90mAuthenticating, requesting PTY...\x1b[0m\r\n');
       socket.emit('pty_connect', vpsId);
     });
 
     socket.on('connect_error', (err) => {
+      term.clear();
       term.write(`\r\n\x1b[31mConnection failed: ${err.message}\x1b[0m\r\n`);
     });
 
     socket.on('disconnect', (reason) => {
       term.write(`\r\n\x1b[33mDisconnected: ${reason}\x1b[0m\r\n`);
+    });
+
+    socket.on('pty_connected', () => {
+      term.clear();
+    });
+
+    socket.on('pty_closed', () => {
+      term.write('\r\n\x1b[33m[Connection closed by server]\x1b[0m\r\n');
     });
 
     term.onData((data) => {

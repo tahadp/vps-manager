@@ -18,7 +18,7 @@ export default function ScreenView({ vpsId, imageData, className }: ScreenViewPr
         onClick={() => imageData && setExpanded(true)}
       >
         {imageData ? (
-          <>
+          <React.Fragment key={imageData.slice(0, 32)}>
             <img
               src={`data:image/jpeg;base64,${imageData}`}
               alt="VPS Screenshot"
@@ -29,7 +29,7 @@ export default function ScreenView({ vpsId, imageData, className }: ScreenViewPr
             <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
               <Maximize2 className="w-4 h-4 text-white/80" />
             </div>
-          </>
+          </React.Fragment>
         ) : (
           <div className="flex flex-col items-center text-text-muted/50 gap-2">
             <TerminalSquare className="w-6 h-6" />

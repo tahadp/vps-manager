@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sync"
 	"time"
 
 	pb "agent/pb"
@@ -22,6 +23,38 @@ import (
 type AgentServer struct {
 	pb.UnimplementedAgentServiceServer
 	vpsID string
+}
+
+type agentSettings struct {
+	mu                   sync.RWMutex
+	screenshotInterval   time.Duration
+	telemetryInterval    time.Duration
+	ramDiskVisible       bool
+	networkVisible       bool
+}
+
+var settings = &agentSettings{
+	screenshotInterval: 30 * time.Second,
+	telemetryInterval:  1 * time.Second,
+	ramDiskVisible:     true,
+	networkVisible:     true,
+}
+
+func applySettings(s *pb.VpsSettingsMessage) {
+	if s == nil {
+		return
+	}
+	settings.mu.Lock()
+	defer settings.mu.Unlock()
+	if s.ScreenshotIntervalSec > 0 {
+		settings.screenshotInterval = time.Duration(s.ScreenshotIntervalSec) * time.Second
+	}
+	if s.TelemetryIntervalSec > 0 {
+		settings.telemetryInterval = time.Duration(s.TelemetryIntervalSec) * time.Second
+	}
+	settings.ramDiskVisible = s.RamDiskVisible
+	settings.networkVisible = s.NetworkVisible
+	log.Printf("Settings applied: telemetry=%v screenshot=%v", settings.telemetryInterval, settings.screenshotInterval)
 }
 
 func (s *AgentServer) ExecuteCommand(ctx context.Context, req *pb.CommandRequest) (*pb.CommandResponse, error) {
@@ -203,7 +236,7 @@ func (p *program) run() {
 			default:
 			}
 
-			_, err := backendClient.Heartbeat(p.ctx, &pb.HeartbeatRequest{
+			resp, err := backendClient.Heartbeat(p.ctx, &pb.HeartbeatRequest{
 				VpsId:     p.cfg.VpsID,
 				Timestamp: time.Now().Unix(),
 			})
@@ -215,6 +248,10 @@ func (p *program) run() {
 					retryDelay = maxRetryDelay
 				}
 				continue
+			}
+
+			if resp != nil && resp.Settings != nil {
+				applySettings(resp.Settings)
 			}
 
 			retryDelay = 1 * time.Second
@@ -262,7 +299,10 @@ func (p *program) run() {
 				metrics, err := telemetry.CollectMetrics()
 				if err != nil {
 					log.Printf("Metrics error: %v", err)
-					time.Sleep(1 * time.Second)
+					settings.mu.RLock()
+					interval := settings.telemetryInterval
+					settings.mu.RUnlock()
+					time.Sleep(interval)
 					continue
 				}
 
@@ -282,7 +322,10 @@ func (p *program) run() {
 					break
 				}
 
-				time.Sleep(1 * time.Second)
+				settings.mu.RLock()
+				interval := settings.telemetryInterval
+				settings.mu.RUnlock()
+				time.Sleep(interval)
 			}
 		}
 	}()
@@ -292,24 +335,35 @@ func (p *program) run() {
 		select {
 		case <-p.ctx.Done():
 			return
-		case <-time.After(30 * time.Second):
-			if telemetry.IsHeadless() {
-				log.Println("Headless environment detected, skipping screenshot")
-				continue
-			}
+		default:
+		}
 
-			data, err := telemetry.CaptureScreenBytes()
-			if err != nil {
-				log.Printf("Screenshot capture failed: %v", err)
-				continue
-			}
-			_, err = backendClient.UploadScreenshot(p.ctx, &pb.ScreenshotRequest{
-				VpsId:     p.cfg.VpsID,
-				ImageData: data,
-			})
-			if err != nil {
-				log.Printf("Screenshot upload failed: %v", err)
-			}
+		settings.mu.RLock()
+		interval := settings.screenshotInterval
+		settings.mu.RUnlock()
+
+		select {
+		case <-p.ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+
+		if telemetry.IsHeadless() {
+			log.Println("Headless environment detected, skipping screenshot")
+			continue
+		}
+
+		data, err := telemetry.CaptureScreenBytes()
+		if err != nil {
+			log.Printf("Screenshot capture failed: %v", err)
+			continue
+		}
+		_, err = backendClient.UploadScreenshot(p.ctx, &pb.ScreenshotRequest{
+			VpsId:     p.cfg.VpsID,
+			ImageData: data,
+		})
+		if err != nil {
+			log.Printf("Screenshot upload failed: %v", err)
 		}
 	}
 }

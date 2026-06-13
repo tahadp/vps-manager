@@ -110,6 +110,14 @@ message HeartbeatRequest {
   int64 timestamp = 2;
 }
 
+message VpsSettingsMessage {
+  int32 screenshot_interval_sec = 1;
+  int32 telemetry_interval_sec = 2;
+  bool ram_disk_visible = 3;
+  bool network_visible = 4;
+}
+
 message HeartbeatResponse {
   bool success = 1;
+  VpsSettingsMessage settings = 2;
 }

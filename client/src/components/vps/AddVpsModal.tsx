@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Server, Key, Terminal, Network } from 'lucide-react';
+import { X, Server, Terminal } from 'lucide-react';
 
 interface AddVpsModalProps {
   isOpen: boolean;
@@ -16,7 +16,6 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
   
   const [formData, setFormData] = useState({
     name: '',
-    id: '', // Optional custom ID
     os: 'Windows Server 2022',
   });
 
@@ -39,7 +38,6 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
         },
         body: JSON.stringify({
           ...formData,
-          id: formData.id.trim() === '' ? undefined : formData.id.trim(),
           userId: user.id
         })
       });
@@ -62,7 +60,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
 
   const handleClose = () => {
     setSuccessData(null);
-    setFormData({ name: '', id: '', os: 'Windows Server 2022' });
+    setFormData({ name: '', os: 'Windows Server 2022' });
     onClose();
   };
 
@@ -145,23 +143,6 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
                   placeholder="e.g. Production Web Server"
                 />
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Custom ID (Optional)</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                  <Key className="w-4 h-4 text-text-muted" />
-                </div>
-                <input
-                  type="text"
-                  value={formData.id}
-                  onChange={e => setFormData({...formData, id: e.target.value})}
-                  className="w-full pl-10 p-2.5 bg-neutral-bg2 border border-border-subtle rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all text-sm"
-                  placeholder="Leave empty to auto-generate"
-                />
-              </div>
-              <p className="text-[10px] text-text-muted">This is the ID your Go Agent will use to authenticate.</p>
             </div>
 
             <div className="space-y-1.5">

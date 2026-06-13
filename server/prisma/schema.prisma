@@ -27,29 +27,43 @@ model User {
 }
 
 model Vps {
-  id        String   @id @default(uuid())
-  name      String
-  ipAddress String
-  os        OsType
-  status    VpsState @default(OFFLINE)
-  apiKey    String   @default(uuid()) @unique
+  id            String    @id @default(uuid())
+  name          String
+  ipAddress     String
+  os            OsType
+  status        VpsState  @default(OFFLINE)
+  apiKey        String    @unique @default(uuid())
   lastHeartbeat DateTime?
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId        String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   alertRules AlertRule[]
+  settings   VpsSettings?
+}
+
+model VpsSettings {
+  id                    String   @id @default(uuid())
+  vpsId                 String   @unique
+  screenshotIntervalSec Int      @default(30)
+  telemetryIntervalSec  Int      @default(1)
+  ramDiskVisible        Boolean  @default(true)
+  networkVisible        Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  vps Vps @relation(fields: [vpsId], references: [id], onDelete: Cascade)
 }
 
 model AuditLog {
   id        String   @id @default(uuid())
-  action    String   // e.g. "RESTART", "FILE_EDIT", "SHELL_LOGIN"
-  target    String   // target affected
+  action    String // e.g. "RESTART", "FILE_EDIT", "SHELL_LOGIN"
+  target    String // target affected
   userId    String
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum Role {
@@ -80,19 +94,19 @@ enum VpsState {
 }
 
 model AlertRule {
-  id          String   @id @default(uuid())
-  userId      String
-  vpsId       String?  
-  metric      String   // "CPU", "RAM", "DISK"
-  condition   String   // ">", "<"
-  threshold   Float    
-  durationMin Int      
-  action      String   // "NOTIFY_ONLY", "RESTART", "CUSTOM_SCRIPT"
+  id           String   @id @default(uuid())
+  userId       String
+  vpsId        String?
+  metric       String // "CPU", "RAM", "DISK"
+  condition    String // ">", "<"
+  threshold    Float
+  durationMin  Int
+  action       String // "NOTIFY_ONLY", "RESTART", "CUSTOM_SCRIPT"
   customScript String? // The script to run if action is CUSTOM_SCRIPT
-  createdAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  vps         Vps?     @relation(fields: [vpsId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vps  Vps? @relation(fields: [vpsId], references: [id], onDelete: Cascade)
 }
 
 model HistoricalMetric {
