@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 import { validate } from '../middlewares/validation';
+import { logAudit } from '../middlewares/audit';
 import { z } from 'zod';
 import axios from 'axios';
 
@@ -30,6 +31,7 @@ settingsRouter.post('/telegram', async (req: AuthRequest, res) => {
       where: { id: req.user!.id },
       data: { telegramBotToken, telegramChatId }
     });
+    await logAudit({ userId: req.user!.id, action: 'TELEGRAM_CONFIG_CHANGED', target: req.user!.id });
     res.json({ message: 'Telegram config updated successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update settings' });

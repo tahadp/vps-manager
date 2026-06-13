@@ -5,6 +5,7 @@ import { execOnAgent, listDirOnAgent, readFileFromAgent, writeFileToAgent, refre
 import { redisPublisher } from '../redis';
 import { OsType } from '@prisma/client';
 import { validate, validateQuery, validateParams, schemas } from '../middlewares/validation';
+import { logAudit } from '../middlewares/audit';
 import { z } from 'zod';
 
 const publishVpsEvent = (type: 'ADDED' | 'DELETED' | 'STATUS_CHANGED' | 'RENAMED', payload: any) => {
@@ -22,13 +23,6 @@ const checkVpsAccess = async (vpsId: string, user: any) => {
   if (user.role === 'ADMIN') return true;
   const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
   return vps && vps.userId === user.id;
-};
-
-// Log action to DB
-const logAudit = async (userId: string, target: string, action: string, details: string) => {
-  await prisma.auditLog.create({
-    data: { userId, action, target: `${target} - ${details}` }
-  });
 };
 
 // Param schemas
@@ -221,7 +215,7 @@ vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), valid
 
   try {
     const result = await execOnAgent(vpsId, command);
-    await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Executed: ${command}`);
+    await logAudit({ userId: req.user!.id, action: 'EXECUTE_COMMAND', target: vpsId, details: `Executed: ${command}` });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -234,7 +228,7 @@ vpsRouter.post('/:id/refresh', requireAuth, validateParams(idParamSchema), async
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
   try {
     const result = await refreshAgent(vpsId);
-    await logAudit(req.user!.id, vpsId, 'REFRESH', 'Manual refresh requested');
+    await logAudit({ userId: req.user!.id, action: 'REFRESH', target: vpsId, details: 'Manual refresh requested' });
     res.json({ ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -341,7 +335,7 @@ vpsRouter.post('/bulk/command', requireAuth, validate(schemas.bulkCommand), asyn
     }
     try {
       const resData = await execOnAgent(vpsId, command);
-      await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Bulk Executed: ${command}`);
+      await logAudit({ userId: req.user!.id, action: 'EXECUTE_COMMAND', target: vpsId, details: `Bulk Executed: ${command}` });
       results.push({ vpsId, success: true, data: resData });
     } catch (err: any) {
       results.push({ vpsId, success: false, error: err.message });
@@ -386,7 +380,7 @@ vpsRouter.put('/:id/file', requireAuth, validateParams(idParamSchema), validate(
 
   try {
     const result = await writeFileToAgent(vpsId, filePath, Buffer.from(content, 'utf-8'));
-    await logAudit(req.user!.id, vpsId, 'FILE_EDIT', `Edited file: ${filePath}`);
+    await logAudit({ userId: req.user!.id, action: 'FILE_EDIT', target: vpsId, details: `Edited file: ${filePath}` });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -402,7 +396,7 @@ vpsRouter.delete('/:id/files', requireAuth, validateParams(idParamSchema), async
 
   try {
     const result = await execOnAgent(vpsId, `rm -rf "${filePath}"`);
-    await logAudit(req.user!.id, vpsId, 'FILE_DELETE', `Deleted: ${filePath}`);
+    await logAudit({ userId: req.user!.id, action: 'FILE_DELETE', target: vpsId, details: `Deleted: ${filePath}` });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -419,7 +413,7 @@ vpsRouter.post('/:id/files', requireAuth, validateParams(idParamSchema), async (
   try {
     const cmd = type === 'directory' ? `mkdir -p "${filePath}"` : `touch "${filePath}"`;
     const result = await execOnAgent(vpsId, cmd);
-    await logAudit(req.user!.id, vpsId, 'FILE_CREATE', `Created: ${filePath}`);
+    await logAudit({ userId: req.user!.id, action: 'FILE_CREATE', target: vpsId, details: `Created: ${filePath}` });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -435,7 +429,7 @@ vpsRouter.patch('/:id/files', requireAuth, validateParams(idParamSchema), async 
 
   try {
     const result = await execOnAgent(vpsId, `mv "${oldPath}" "${newPath}"`);
-    await logAudit(req.user!.id, vpsId, 'FILE_RENAME', `Renamed: ${oldPath} to ${newPath}`);
+    await logAudit({ userId: req.user!.id, action: 'FILE_RENAME', target: vpsId, details: `Renamed: ${oldPath} to ${newPath}` });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

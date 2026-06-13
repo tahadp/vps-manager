@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 import { validate, schemas } from '../middlewares/validation';
+import { logAudit } from '../middlewares/audit';
 
 export const authRouter = Router();
 
@@ -64,7 +65,10 @@ authRouter.post('/login', validate(schemas.login), async (req, res) => {
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!isMatch) {
+      await logAudit({ userId: user.id, action: 'LOGIN_FAIL', target: user.id });
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
     const expiresIn = rememberMe ? '30d' : '1d';
     const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { algorithm: 'HS256', expiresIn });
@@ -74,6 +78,8 @@ authRouter.post('/login', validate(schemas.login), async (req, res) => {
       where: { id: user.id },
       data: { lastLogin: new Date() }
     }).catch((err) => console.error('lastLogin update failed:', err));
+
+    await logAudit({ userId: user.id, action: 'LOGIN_OK', target: user.id });
 
     res.json({ token, user: { id: user.id, email: user.email, username: user.username, role: user.role } });
   } catch (error) {
@@ -106,6 +112,8 @@ authRouter.post('/change-password', requireAuth, validate(schemas.changePassword
       where: { id: userId },
       data: { password: hashedPassword }
     });
+
+    await logAudit({ userId, action: 'PASSWORD_CHANGE', target: userId });
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {

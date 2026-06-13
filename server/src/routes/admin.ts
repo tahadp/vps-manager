@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, requireAdmin, AuthRequest } from '../middlewares/authMiddleware';
+import { logAudit } from '../middlewares/audit';
 
 export const adminRouter = Router();
 
@@ -34,6 +35,7 @@ adminRouter.put('/users/:id/status', async (req, res) => {
       where: { id },
       data: { status }
     });
+    await logAudit({ userId: userReq.user!.id, action: `USER_${status}`, target: id });
     res.json({ message: 'Status updated', status: updatedUser.status });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update user' });
