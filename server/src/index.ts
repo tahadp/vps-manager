@@ -1,7 +1,9 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import helmet from 'helmet';
 import http from 'http';
+import { randomUUID } from 'crypto';
 import { startGrpcServer } from './grpcServer';
 import { initWebSocket } from './socket';
 import { authRouter } from './routes/auth';
@@ -14,10 +16,15 @@ import { notificationsRouter } from './routes/notifications';
 import { initAlertingEngine } from './alerting';
 import { startMetricsPruneInterval } from './metrics';
 import { authLimiter, apiLimiter } from './middlewares/rateLimit';
+import { prisma } from './prisma';
+import { redisCache } from './redis';
+import { logger } from './logger';
 
 dotenv.config({ path: '../.env' });
 
 const app = express();
+
+app.set('trust proxy', 1);
 
 if (!process.env.JWT_SECRET) {
   throw new Error("FATAL ERROR: JWT_SECRET environment variable is missing.");
@@ -39,6 +46,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+}));
+
 // Rate limiting
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/vps', apiLimiter, vpsRouter);
@@ -53,6 +66,16 @@ const server = http.createServer(app);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'vps-management-server' });
+});
+
+app.get('/health/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    await redisCache.ping();
+    res.json({ status: 'ok' });
+  } catch (err) {
+    res.status(503).json({ status: 'degraded', error: (err as Error).message });
+  }
 });
 
 initWebSocket(server);

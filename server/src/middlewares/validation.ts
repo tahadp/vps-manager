@@ -90,11 +90,18 @@ export function validateParams(schema: ZodSchema) {
   };
 }
 
+const passwordComplexity = z.string()
+  .min(12, 'Password must be at least 12 characters')
+  .max(128, 'Password must be at most 128 characters')
+  .refine((v: string) => /[a-z]/.test(v), 'Password must contain a lowercase letter')
+  .refine((v: string) => /[A-Z]/.test(v), 'Password must contain an uppercase letter')
+  .refine((v: string) => /[0-9]/.test(v), 'Password must contain a digit');
+
 export const schemas = {
   register: z.object({
     email: z.string().email(),
     username: z.string().min(3).max(50).optional(),
-    password: z.string().min(6).max(100)
+    password: passwordComplexity
   }),
 
   login: z.object({
@@ -109,7 +116,7 @@ export const schemas = {
 
   changePassword: z.object({
     oldPassword: z.string().min(1),
-    newPassword: z.string().min(6).max(100)
+    newPassword: passwordComplexity
   }),
 
   createVps: z.object({

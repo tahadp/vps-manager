@@ -99,13 +99,4 @@ settingsRouter.put('/preferences', validate(userPrefsSchema), async (req: AuthRe
   }
 });
 
-// DEPRECATED: Last login is now updated automatically on /api/auth/login.
-// Kept for backward compatibility. Will be removed in a future release.
-settingsRouter.put('/last-login', async (req: AuthRequest, res) => {
-  try {
-    await prisma.user.update({ where: { id: req.user!.id }, data: { lastLogin: new Date() } });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update last login' });
-  }
-});
+// Last login is updated automatically on /api/auth/login.

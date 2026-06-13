@@ -108,6 +108,7 @@ authRouter.post('/change-password', requireAuth, validate(schemas.changePassword
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
+    // TODO: invalidate other sessions via tokenVersion in F2-1
     await prisma.user.update({
       where: { id: userId },
       data: { password: hashedPassword }
