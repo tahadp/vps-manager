@@ -18,20 +18,18 @@ const AgentService = protoDescriptor.vps.AgentService;
 
 const AGENT_PORT = 50052;
 
-// Connection cache to avoid leaking gRPC connections
 const clientCache = new Map<string, any>();
 
-/**
- * Helper to get a gRPC client for a specific VPS (cached).
- */
 export async function getAgentClient(vpsId: string): Promise<any> {
+  if (!vpsId) throw new Error('VPS ID is required');
+
   if (clientCache.has(vpsId)) {
     return clientCache.get(vpsId)!;
   }
 
   const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
   if (!vps) throw new Error('VPS not found');
-  if (!vps.ipAddress) throw new Error('VPS IP address is missing');
+  if (!vps.ipAddress || vps.ipAddress === 'Pending') throw new Error('VPS IP address is missing. Is the agent running?');
 
   const client = new AgentService(
     `${vps.ipAddress}:${AGENT_PORT}`,
