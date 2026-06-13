@@ -1,87 +1,85 @@
 import { Request, Response, NextFunction } from 'express';
-
-interface RateLimitStore {
-  [key: string]: {
-    count: number;
-    resetTime: number;
-  };
-}
-
-const store: RateLimitStore = {};
-
-// Periyodik temizleme (her 5 dakikada bir)
-setInterval(() => {
-  const now = Date.now();
-  for (const key in store) {
-    if (store[key].resetTime < now) {
-      delete store[key];
-    }
-  }
-}, 5 * 60 * 1000);
+import { randomUUID } from 'crypto';
+import { redisCache } from '../redis';
 
 interface RateLimitOptions {
-  windowMs: number;      // Zaman penceresi (ms)
-  max: number;           // Maksimum istek sayısı
-  message?: string;      // Hata mesajı
-  keyGenerator?: (req: Request) => string; // Key oluşturucu fonksiyon
+  windowMs: number;
+  max: number;
+  message?: string;
+  keyGenerator?: (req: Request) => string;
 }
+
+const defaultKeyGenerator = (req: Request): string => {
+  return req.ip || req.socket.remoteAddress || 'unknown';
+};
 
 export function rateLimit(options: RateLimitOptions) {
   const {
-    windowMs = 15 * 60 * 1000, // Varsayılan: 15 dakika
-    max = 100,                  // Varsayılan: 100 istek
+    windowMs = 15 * 60 * 1000,
+    max = 100,
     message = 'Too many requests, please try again later.',
-    keyGenerator = (req: Request) => {
-      // IP adresi veya user ID kullan
-      return req.ip || req.socket.remoteAddress || 'unknown';
-    }
+    keyGenerator = defaultKeyGenerator
   } = options;
 
-  return (req: Request, res: Response, next: NextFunction) => {
-    const key = keyGenerator(req);
+  const keyPrefix = 'rl';
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const key = `${keyPrefix}:${keyGenerator(req)}`;
     const now = Date.now();
+    const windowStart = now - windowMs;
+    const member = `${now}:${randomUUID()}`;
 
-    // Store'da yoksa veya süre dolmuşsa sıfırla
-    if (!store[key] || store[key].resetTime < now) {
-      store[key] = {
-        count: 0,
-        resetTime: now + windowMs
-      };
+    try {
+      const results = await redisCache
+        .multi()
+        .zadd(key, now, member)
+        .zremrangebyscore(key, 0, windowStart)
+        .zcard(key)
+        .pexpire(key, windowMs * 2)
+        .exec();
+
+      if (!results) {
+        return next();
+      }
+
+      const zcardResult = results[2];
+      if (!zcardResult || zcardResult[0]) {
+        return next();
+      }
+
+      const count = Number(zcardResult[1]) || 0;
+      const remaining = Math.max(0, max - count);
+      const reset = Math.ceil((now + windowMs) / 1000);
+
+      res.setHeader('X-RateLimit-Limit', max);
+      res.setHeader('X-RateLimit-Remaining', remaining);
+      res.setHeader('X-RateLimit-Reset', reset);
+
+      if (count > max) {
+        res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
+        return res.status(429).json({ error: message });
+      }
+
+      return next();
+    } catch (err) {
+      console.error('Rate limiter Redis error:', (err as Error).message);
+      return next();
     }
-
-    // İstek sayısını artır
-    store[key].count++;
-
-    // Rate limit header'ları ekle
-    res.setHeader('X-RateLimit-Limit', max);
-    res.setHeader('X-RateLimit-Remaining', Math.max(0, max - store[key].count));
-    res.setHeader('X-RateLimit-Reset', Math.ceil(store[key].resetTime / 1000));
-
-    // Limit aşıldıysa hata döndür
-    if (store[key].count > max) {
-      res.setHeader('Retry-After', Math.ceil((store[key].resetTime - now) / 1000));
-      return res.status(429).json({ error: message });
-    }
-
-    next();
   };
 }
 
-// Auth endpointleri için sıkı limit
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 dakika
-  max: 10,                    // 10 istek
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   message: 'Too many login attempts. Please try again in 15 minutes.',
   keyGenerator: (req: Request) => {
-    // Login/Register için IP + endpoint kombinasyonu
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     return `${ip}:${req.path}`;
   }
 });
 
-// Genel API için normal limit
 export const apiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000,  // 1 dakika
-  max: 60,                    // 60 istek
+  windowMs: 1 * 60 * 1000,
+  max: 60,
   message: 'Too many requests. Please slow down.'
 });
