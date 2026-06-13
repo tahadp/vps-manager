@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Server, Search, PowerOff, RefreshCw, Trash2, Eye, Filter, ArrowUpDown, X, Check } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { io, Socket } from 'socket.io-client';
 import { AddVpsModal } from '@/components/vps/AddVpsModal';
 import RefreshButton from '@/components/vps/RefreshButton';
+import { useSocket } from '@/lib/socket';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -34,30 +34,69 @@ export default function VpsListPage() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [user, setUser] = useState<any>(null);
 
+  const { socket } = useSocket();
+  const subscribedRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { router.push('/login'); return; }
     setUser(JSON.parse(localStorage.getItem('user') || '{}'));
-    const socket = io(API, { auth: { token }, transports: ['websocket', 'polling'] });
-    socket.emit('subscribe_vps_list');
-    socket.on('vps_event', (e: any) => {
-      // Refresh list when VPS added/deleted/status changed
-      if (e.type === 'ADDED' || e.type === 'DELETED' || e.type === 'STATUS_CHANGED') {
-        fetchList(token);
-      }
-    });
-    fetchList(token);
-    return () => { socket.disconnect(); };
   }, [router]);
 
-  const fetchList = async (token: string) => {
-    try {
-      const res = await fetch(`${API}/api/vps`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (Array.isArray(data)) setVpsList(data);
-    } catch (err) { console.error(err); }
-    setLoading(false);
-  };
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !socket) return;
+
+    const fetchList = async () => {
+      try {
+        const res = await fetch(`${API}/api/vps`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setVpsList(data);
+          data.forEach((v: any) => {
+            if (!subscribedRef.current.has(v.id)) {
+              socket.emit('subscribe_vps', v.id);
+              subscribedRef.current.add(v.id);
+            }
+          });
+        }
+      } catch (err) { console.error(err); }
+      setLoading(false);
+    };
+
+    fetchList();
+
+    const onVpsEvent = (e: any) => {
+      if (!e) return;
+      if (e.type === 'STATUS_CHANGED' && e.vpsId) {
+        setVpsList(prev => prev.map(v => v.id === e.vpsId ? { ...v, status: e.status, name: e.name || v.name } : v));
+      } else if (e.type === 'ADDED' && e.vpsId) {
+        if (!subscribedRef.current.has(e.vpsId)) {
+          socket.emit('subscribe_vps', e.vpsId);
+          subscribedRef.current.add(e.vpsId);
+        }
+        setVpsList(prev => {
+          if (prev.some(v => v.id === e.vpsId)) return prev;
+          return [...prev, { id: e.vpsId, name: e.name, status: e.status, userId: e.userId }];
+        });
+      } else if (e.type === 'DELETED' && e.vpsId) {
+        subscribedRef.current.delete(e.vpsId);
+        setVpsList(prev => prev.filter(v => v.id !== e.vpsId));
+      } else if (e.type === 'RENAMED' && e.vpsId) {
+        setVpsList(prev => prev.map(v => v.id === e.vpsId ? { ...v, name: e.name || v.name } : v));
+      }
+    };
+    const onConnect = () => {
+      subscribedRef.current.forEach(id => socket.emit('subscribe_vps', id));
+    };
+
+    socket.on('vps_event', onVpsEvent);
+    socket.on('connect', onConnect);
+    return () => {
+      socket.off('vps_event', onVpsEvent);
+      socket.off('connect', onConnect);
+    };
+  }, [socket, router]);
 
   // Available OS (sadece mevcut olanlar)
   const availableOs = useMemo(() => {

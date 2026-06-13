@@ -1,12 +1,13 @@
 "use client";
 
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { CommandPalette } from '../CommandPalette';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
+import { SocketProvider } from '@/lib/socket';
 
 interface AppShellProps {
   children: ReactNode;
@@ -15,20 +16,22 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
 
-  // If login page, don't show the shell
-  if (pathname === '/login') {
-    return <>{children}</>;
-  }
+  useEffect(() => {
+    if (pathname === '/login') {
+      setToken(null);
+      return;
+    }
+    setToken(typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+  }, [pathname]);
 
-  return (
+  const content = (
     <div className="flex h-screen w-full bg-neutral-bg1 overflow-hidden">
-      {/* Desktop Sidebar */}
       <div className="hidden lg:block">
         <Sidebar />
       </div>
 
-      {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
         {sidebarOpen && (
           <>
@@ -61,7 +64,6 @@ export function AppShell({ children }: AppShellProps) {
       </AnimatePresence>
 
       <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden relative">
-        {/* Mobile menu button in Topbar area */}
         <div className="flex items-center lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -70,7 +72,7 @@ export function AppShell({ children }: AppShellProps) {
             <Menu className="w-5 h-5" />
           </button>
         </div>
-        
+
         <Topbar />
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
           <AnimatePresence mode="wait">
@@ -90,4 +92,10 @@ export function AppShell({ children }: AppShellProps) {
       <CommandPalette />
     </div>
   );
+
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
+
+  return <SocketProvider token={token}>{content}</SocketProvider>;
 }

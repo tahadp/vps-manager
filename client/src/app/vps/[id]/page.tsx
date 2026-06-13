@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { io, Socket } from "socket.io-client";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Server, Cpu, MemoryStick, HardDrive, TerminalSquare,
@@ -16,6 +15,7 @@ import WebPTY from "@/components/Terminal";
 import FileManager from "@/components/FileManager";
 import ScreenView from "@/components/ScreenView";
 import RefreshButton from "@/components/vps/RefreshButton";
+import { useSocket } from "@/lib/socket";
 
 type TabKey = "overview" | "terminal" | "files" | "rustdesk" | "performance";
 
@@ -123,7 +123,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const [chartRangeMin, setChartRangeMin] = useState(60);
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [socketStatus, setSocketStatus] = useState<"connecting" | "connected" | "error">("connecting");
-  const socketRef = useRef<Socket | null>(null);
+  const { socket, connectionStatus: globalConnStatus } = useSocket();
   const [now, setNow] = useState<number>(Date.now());
 
   // Visible charts (from VPS settings) - default to all
@@ -200,47 +200,60 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     .then(data => {
       setVps(data);
       setLoading(false);
-
-      const socket = io(API, { auth: { token }, transports: ['websocket', 'polling'] });
-      socketRef.current = socket;
-      socket.emit('subscribe_vps_list');
-
-      socket.on('connect', () => {
-        setSocketStatus("connected");
-        socket.emit("subscribe_vps", id);
-      });
-      socket.on('connect_error', () => setSocketStatus("error"));
-      socket.on('disconnect', () => setSocketStatus("error"));
-
-      socket.on("telemetry_update", (d) => {
-        if (d && d.vpsId === id) {
-          setTelemetry(d);
-        }
-      });
-
-      socket.on("screenshot_update", (d) => {
-        if (d && d.vpsId === id && d.imageData) {
-          setScreenshot(d.imageData);
-        }
-      });
-
-      socket.on("vps_status_update", (d) => {
-        if (d && d.vpsId === id) {
-          setVps((prev: any) => prev ? {
-            ...prev,
-            status: d.status || prev.status,
-            lastHeartbeat: d.lastHeartbeat || prev.lastHeartbeat,
-            ipAddress: d.ipAddress || prev.ipAddress
-          } : prev);
-        }
-      });
-
       fetchChartData(token, chartRangeMin);
     })
     .catch(() => { setLoading(false); setVps(null); });
-
-    return () => { if (socketRef.current) socketRef.current.disconnect(); };
   }, [id, router, fetchChartData]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    if (socket.connected) {
+      setSocketStatus("connected");
+      socket.emit("subscribe_vps", id);
+    } else {
+      setSocketStatus("connecting");
+    }
+
+    const onConnect = () => {
+      setSocketStatus("connected");
+      socket.emit("subscribe_vps", id);
+    };
+    const onConnectError = () => setSocketStatus("error");
+    const onDisconnect = () => setSocketStatus("error");
+    const onTelemetry = (d: any) => {
+      if (d && d.vpsId === id) setTelemetry(d);
+    };
+    const onScreenshot = (d: any) => {
+      if (d && d.vpsId === id && d.imageData) setScreenshot(d.imageData);
+    };
+    const onStatus = (d: any) => {
+      if (d && d.vpsId === id) {
+        setVps((prev: any) => prev ? {
+          ...prev,
+          status: d.status || prev.status,
+          lastHeartbeat: d.lastHeartbeat || prev.lastHeartbeat,
+          ipAddress: d.ipAddress || prev.ipAddress
+        } : prev);
+      }
+    };
+
+    socket.on("connect", onConnect);
+    socket.on("connect_error", onConnectError);
+    socket.on("disconnect", onDisconnect);
+    socket.on("telemetry_update", onTelemetry);
+    socket.on("screenshot_update", onScreenshot);
+    socket.on("vps_status_update", onStatus);
+
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("connect_error", onConnectError);
+      socket.off("disconnect", onDisconnect);
+      socket.off("telemetry_update", onTelemetry);
+      socket.off("screenshot_update", onScreenshot);
+      socket.off("vps_status_update", onStatus);
+    };
+  }, [socket, id]);
 
   useEffect(() => {
     const token = localStorage.getItem("token");

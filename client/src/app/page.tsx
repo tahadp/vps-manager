@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import io from "socket.io-client";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -12,6 +11,7 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStr
 import { CSS } from '@dnd-kit/utilities';
 import { AddVpsModal } from '@/components/vps/AddVpsModal';
 import RefreshButton from '@/components/vps/RefreshButton';
+import { useSocket } from '@/lib/socket';
 
 function SortableVpsCard(props: any) {
   const { vps, isSelected, m, screenshots, toggleSelect, router } = props;
@@ -182,7 +182,7 @@ export default function Dashboard() {
   const [screenshots, setScreenshots] = useState<Record<string, string>>({});
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
+  const { socket, connectionStatus } = useSocket();
 
   const [selectedVps, setSelectedVps] = useState<string[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -190,6 +190,7 @@ export default function Dashboard() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const savePrefsTimeout = useRef<NodeJS.Timeout | null>(null);
+  const subscribedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -197,76 +198,96 @@ export default function Dashboard() {
 
     if (!token) { router.push("/login"); return; }
     setUser(JSON.parse(storedUser || '{}'));
-
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-      auth: { token },
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 30000,
-      timeout: 20000
-    });
-
-    socket.on('connect', () => {
-      setConnectionStatus('connected');
-      socket.emit('subscribe_vps_list');
-      fetchVpsList(token, socket);
-    });
-    socket.on('disconnect', () => setConnectionStatus('disconnected'));
-    socket.on('reconnecting', () => setConnectionStatus('reconnecting'));
-    socket.on('connect_error', () => {});
-
-    socket.on('telemetry_update', (update) => {
-      if (update && update.vpsId) setMetricsMap(prev => ({ ...prev, [update.vpsId]: update }));
-    });
-    socket.on('screenshot_update', (update) => {
-      if (update && update.vpsId) setScreenshots(prev => ({ ...prev, [update.vpsId]: update.imageData }));
-    });
-    socket.on('vps_event', (e: any) => {
-      if (e.type === 'ADDED' || e.type === 'DELETED' || e.type === 'STATUS_CHANGED') {
-        fetchVpsList(token, socket);
-      }
-    });
-
-    return () => { socket.disconnect(); };
   }, [router]);
 
-  const fetchVpsList = async (token: string, socket: any) => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!Array.isArray(data)) return;
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token || !socket) return;
 
-      // Fetch user preferences (dashboardVpsOrder)
-      const prefsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      let order: string[] = [];
-      if (prefsRes.ok) {
-        const prefs = await prefsRes.json();
-        if (Array.isArray(prefs.dashboardVpsOrder)) order = prefs.dashboardVpsOrder;
+    const fetchVpsList = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!Array.isArray(data)) return;
+
+        const prefsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        let order: string[] = [];
+        if (prefsRes.ok) {
+          const prefs = await prefsRes.json();
+          if (Array.isArray(prefs.dashboardVpsOrder)) order = prefs.dashboardVpsOrder;
+        }
+
+        const sorted = [...data].sort((a, b) => {
+          const ai = order.indexOf(a.id);
+          const bi = order.indexOf(b.id);
+          if (ai === -1 && bi === -1) return 0;
+          if (ai === -1) return 1;
+          if (bi === -1) return -1;
+          return ai - bi;
+        });
+        setVpsList(sorted);
+        setLoading(false);
+
+        data.forEach((vps: any) => {
+          if (!subscribedRef.current.has(vps.id)) {
+            socket.emit('subscribe_vps', vps.id);
+            subscribedRef.current.add(vps.id);
+          }
+        });
+      } catch (error) {
+        console.error('Failed to fetch VPS list:', error);
+        setLoading(false);
       }
+    };
 
-      // Sort according to saved order
-      const sorted = [...data].sort((a, b) => {
-        const ai = order.indexOf(a.id);
-        const bi = order.indexOf(b.id);
-        if (ai === -1 && bi === -1) return 0;
-        if (ai === -1) return 1;
-        if (bi === -1) return -1;
-        return ai - bi;
-      });
-      setVpsList(sorted);
-      setLoading(false);
+    fetchVpsList();
 
-      data.forEach((vps: any) => socket.emit('subscribe_vps', vps.id));
-    } catch (error) {
-      console.error('Failed to fetch VPS list:', error);
-      setLoading(false);
-    }
-  };
+    const onTelemetry = (update: any) => {
+      if (update && update.vpsId) setMetricsMap(prev => ({ ...prev, [update.vpsId]: update }));
+    };
+    const onScreenshot = (update: any) => {
+      if (update && update.vpsId) setScreenshots(prev => ({ ...prev, [update.vpsId]: update.imageData }));
+    };
+    const onVpsEvent = (e: any) => {
+      if (!e) return;
+      if (e.type === 'STATUS_CHANGED' && e.vpsId) {
+        setVpsList(prev => prev.map(v => v.id === e.vpsId ? { ...v, status: e.status, name: e.name || v.name } : v));
+      } else if (e.type === 'ADDED' && e.vpsId) {
+        if (!subscribedRef.current.has(e.vpsId)) {
+          socket.emit('subscribe_vps', e.vpsId);
+          subscribedRef.current.add(e.vpsId);
+        }
+        setVpsList(prev => {
+          if (prev.some(v => v.id === e.vpsId)) return prev;
+          return [...prev, { id: e.vpsId, name: e.name, status: e.status, userId: e.userId }];
+        });
+      } else if (e.type === 'DELETED' && e.vpsId) {
+        subscribedRef.current.delete(e.vpsId);
+        setVpsList(prev => prev.filter(v => v.id !== e.vpsId));
+      } else if (e.type === 'RENAMED' && e.vpsId) {
+        setVpsList(prev => prev.map(v => v.id === e.vpsId ? { ...v, name: e.name || v.name } : v));
+      }
+    };
+    const onConnect = () => {
+      subscribedRef.current.forEach(id => socket.emit('subscribe_vps', id));
+    };
+
+    socket.on('telemetry_update', onTelemetry);
+    socket.on('screenshot_update', onScreenshot);
+    socket.on('vps_event', onVpsEvent);
+    socket.on('connect', onConnect);
+
+    return () => {
+      socket.off('telemetry_update', onTelemetry);
+      socket.off('screenshot_update', onScreenshot);
+      socket.off('vps_event', onVpsEvent);
+      socket.off('connect', onConnect);
+    };
+  }, [socket]);
 
   const persistOrder = (newList: any[]) => {
     const token = localStorage.getItem('token');

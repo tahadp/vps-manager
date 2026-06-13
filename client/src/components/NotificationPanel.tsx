@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Check, X } from 'lucide-react';
-import { io, Socket } from 'socket.io-client';
+import { useSocket } from '@/lib/socket';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -20,7 +20,7 @@ export default function NotificationPanel() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const { socket } = useSocket();
 
   const fetchItems = async () => {
     setLoading(true);
@@ -36,15 +36,13 @@ export default function NotificationPanel() {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    const socket = io(API, { auth: { token }, transports: ['websocket', 'polling'] });
-    socketRef.current = socket;
-    socket.on('notification', (n: any) => {
+    if (!socket) return;
+    const handler = (n: any) => {
       setItems(prev => [n, ...prev].slice(0, 50));
-    });
-    return () => { socket.disconnect(); };
-  }, []);
+    };
+    socket.on('notification', handler);
+    return () => { socket.off('notification', handler); };
+  }, [socket]);
 
   useEffect(() => {
     if (open) fetchItems();

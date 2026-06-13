@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useRef, useState } from 'react';
-import io, { Socket } from 'socket.io-client';
+import { useSocket } from '@/lib/socket';
 
 interface WebPTYProps {
   vpsId: string;
@@ -13,18 +13,19 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<any>(null);
   const fitRef = useRef<any>(null);
-  const socketRef = useRef<Socket | null>(null);
   const stateRef = useRef<ConnState>('idle');
   const currentSessionIdRef = useRef<string | null>(null);
   const [state, setState] = useState<ConnState>('idle');
+  const { socket } = useSocket();
 
   useEffect(() => {
     if (!terminalRef.current) return;
+    if (!socket) return;
 
     let cancelled = false;
     let xterm: any = null;
     let fitAddon: any = null;
-    let socket: Socket | null = null;
+    const attachedHandlers: Array<[string, (...args: any[]) => void]> = [];
 
     const writeStatus = (term: any, msg: string, color: 'gray' | 'green' | 'red' | 'yellow' = 'gray') => {
       const codes: Record<string, string> = { gray: '90', green: '32', red: '31', yellow: '33' };
@@ -62,53 +63,69 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
       const resizeObserver = new ResizeObserver(fitTerminal);
       resizeObserver.observe(terminalRef.current);
 
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000', {
-        auth: { token },
-        reconnection: true
-      });
-      socketRef.current = socket;
-
       const setStateAndRef = (s: ConnState) => {
         stateRef.current = s;
         setState(s);
       };
 
-      setStateAndRef('connecting');
-      writeStatus(xterm, 'Connecting to VPS…', 'gray');
-
-      socket.on('connect', () => {
+      if (socket.connected) {
+        setStateAndRef('connecting');
         writeStatus(xterm, 'Authenticating, requesting PTY…', 'gray');
-        socket?.emit('shell:open', { vpsId });
-      });
-      socket.on('connect_error', (err: any) => {
+        socket.emit('shell:open', { vpsId });
+      } else {
+        setStateAndRef('connecting');
+        writeStatus(xterm, 'Connecting to VPS…', 'gray');
+      }
+
+      const onConnect = () => {
+        writeStatus(xterm, 'Authenticating, requesting PTY…', 'gray');
+        socket.emit('shell:open', { vpsId });
+      };
+      const onConnectError = (err: any) => {
         setStateAndRef('closed');
         try { xterm.clear(); } catch {}
-        writeStatus(xterm, `Connection failed: ${err.message}`, 'red');
-      });
-      socket.on('disconnect', (reason: string) => {
+        writeStatus(xterm, `Connection failed: ${err?.message || 'unknown'}`, 'red');
+      };
+      const onDisconnect = (reason: string) => {
         setStateAndRef('closed');
         writeStatus(xterm, `Disconnected: ${reason}`, 'yellow');
-      });
-      socket.on('shell:opened', (payload: { sessionId: string }) => {
+      };
+      const onShellOpened = (payload: { sessionId: string }) => {
         currentSessionIdRef.current = payload?.sessionId || null;
         setStateAndRef('connected');
         try { xterm.clear(); } catch {}
-      });
-      socket.on('shell:closed', () => {
+      };
+      const onShellClosed = () => {
         setStateAndRef('closed');
         writeStatus(xterm, 'Connection closed by server.', 'yellow');
-      });
-      socket.on('shell:output', (payload: { data: string }) => {
+      };
+      const onShellOutput = (payload: { data: string }) => {
         try { xterm.write(payload?.data || ''); } catch {}
-      });
-      socket.on('shell:error', (payload: { error: string }) => {
+      };
+      const onShellError = (payload: { error: string }) => {
         setStateAndRef('closed');
         writeStatus(xterm, `Error: ${payload?.error || 'unknown'}`, 'red');
-      });
+      };
+
+      socket.on('connect', onConnect);
+      socket.on('connect_error', onConnectError);
+      socket.on('disconnect', onDisconnect);
+      socket.on('shell:opened', onShellOpened);
+      socket.on('shell:closed', onShellClosed);
+      socket.on('shell:output', onShellOutput);
+      socket.on('shell:error', onShellError);
+      attachedHandlers.push(
+        ['connect', onConnect],
+        ['connect_error', onConnectError],
+        ['disconnect', onDisconnect],
+        ['shell:opened', onShellOpened],
+        ['shell:closed', onShellClosed],
+        ['shell:output', onShellOutput],
+        ['shell:error', onShellError]
+      );
 
       xterm.onData((data: string) => {
-        if (socket?.connected && stateRef.current === 'connected' && currentSessionIdRef.current) {
+        if (socket.connected && stateRef.current === 'connected' && currentSessionIdRef.current) {
           socket.emit('shell:input', { sessionId: currentSessionIdRef.current, data });
         }
       });
@@ -116,15 +133,16 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
       (terminalRef.current as any).__cleanup = () => {
         clearTimeout(fitTimeout);
         resizeObserver.disconnect();
-        if (currentSessionIdRef.current && socket?.connected) {
+        for (const [ev, fn] of attachedHandlers) {
+          socket.off(ev, fn);
+        }
+        if (currentSessionIdRef.current && socket.connected) {
           socket.emit('shell:close', { sessionId: currentSessionIdRef.current });
         }
         currentSessionIdRef.current = null;
-        socket?.disconnect();
         try { xterm.dispose(); } catch {}
         termRef.current = null;
         fitRef.current = null;
-        socketRef.current = null;
       };
     })();
 
@@ -133,7 +151,7 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
       const cleanup = (terminalRef.current as any)?.__cleanup;
       if (cleanup) cleanup();
     };
-  }, [vpsId]);
+  }, [vpsId, socket]);
 
   return (
     <div className="w-full h-full relative">
