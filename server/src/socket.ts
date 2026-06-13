@@ -11,7 +11,7 @@ let io: Server;
 
 export const initWebSocket = (server: http.Server) => {
   io = new Server(server, {
-    cors: { origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }
+    cors: { origin: process.env.CORS_ORIGIN || true, credentials: true }
   });
 
   io.use((socket, next) => {

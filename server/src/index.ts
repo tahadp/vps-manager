@@ -21,7 +21,10 @@ if (!process.env.JWT_SECRET) {
   throw new Error("FATAL ERROR: JWT_SECRET environment variable is missing.");
 }
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
+app.use(cors({ 
+  origin: process.env.CORS_ORIGIN || true,  // true = reflect request origin
+  credentials: true 
+}));
 app.use(express.json());
 
 // Rate limiting
