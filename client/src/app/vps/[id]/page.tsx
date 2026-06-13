@@ -41,7 +41,11 @@ export default function VpsDetail({ params }: { params: { id: string } }) {
 
       const socket = io(API, { auth: { token } });
       socketRef.current = socket;
-      socket.emit("subscribe_vps", id);
+
+      socket.on('connect', () => {
+        socket.emit("subscribe_vps", id);
+      });
+
       socket.on("telemetry_update", (d) => setTelemetry(d));
 
       // Fetch real historical metrics
