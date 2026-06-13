@@ -39,20 +39,26 @@ export async function getAgentClient(vpsId: string): Promise<any> {
   const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
   if (!vps) throw new Error('VPS not found');
   if (!vps.ipAddress || vps.ipAddress === 'Pending') throw new Error('VPS IP address is missing. Is the agent running?');
+  if (!vps.apiKey) throw new Error('VPS API key is missing. Agent is not registered.');
+
+  const metadata = new grpc.Metadata();
+  metadata.add('x-api-key', vps.apiKey);
 
   const client = new AgentService(
     `${vps.ipAddress}:${AGENT_PORT}`,
     grpc.credentials.createInsecure(),
     { 'grpc.enable_http_proxy': 0 }
   );
+  (client as any)._authMetadata = metadata;
   clientCache.set(vpsId, client);
   return client;
 }
 
 export async function executeCommand(vpsId: string, command: string): Promise<{ success: boolean; output: string }> {
   const client = await getAgentClient(vpsId);
+  const metadata: grpc.Metadata = (client as any)._authMetadata;
   return new Promise((resolve, reject) => {
-    client.ExecuteCommand({ vps_id: vpsId, command }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+    client.ExecuteCommand({ vps_id: vpsId, command }, metadata, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
       if (err) {
         if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
         return reject(err);
@@ -64,8 +70,9 @@ export async function executeCommand(vpsId: string, command: string): Promise<{ 
 
 export async function listDirectory(vpsId: string, dirPath: string): Promise<any> {
   const client = await getAgentClient(vpsId);
+  const metadata: grpc.Metadata = (client as any)._authMetadata;
   return new Promise((resolve, reject) => {
-    client.ListDirectory({ vps_id: vpsId, path: dirPath }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+    client.ListDirectory({ vps_id: vpsId, path: dirPath }, metadata, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
       if (err) {
         if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
         return reject(err);
@@ -77,8 +84,9 @@ export async function listDirectory(vpsId: string, dirPath: string): Promise<any
 
 export async function readFile(vpsId: string, filePath: string): Promise<any> {
   const client = await getAgentClient(vpsId);
+  const metadata: grpc.Metadata = (client as any)._authMetadata;
   return new Promise((resolve, reject) => {
-    client.ReadFile({ vps_id: vpsId, path: filePath }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+    client.ReadFile({ vps_id: vpsId, path: filePath }, metadata, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
       if (err) {
         if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
         return reject(err);
@@ -90,8 +98,9 @@ export async function readFile(vpsId: string, filePath: string): Promise<any> {
 
 export async function writeFile(vpsId: string, filePath: string, content: Buffer): Promise<any> {
   const client = await getAgentClient(vpsId);
+  const metadata: grpc.Metadata = (client as any)._authMetadata;
   return new Promise((resolve, reject) => {
-    client.WriteFile({ vps_id: vpsId, path: filePath, content }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+    client.WriteFile({ vps_id: vpsId, path: filePath, content }, metadata, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
       if (err) {
         if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
         return reject(err);
@@ -107,8 +116,9 @@ export async function writeFile(vpsId: string, filePath: string, content: Buffer
  */
 export async function refreshNow(vpsId: string): Promise<{ success: boolean; output: string }> {
   const client = await getAgentClient(vpsId);
+  const metadata: grpc.Metadata = (client as any)._authMetadata;
   return new Promise((resolve, reject) => {
-    client.ExecuteCommand({ vps_id: vpsId, command: '__refresh__', timeout_seconds: 5 }, { deadline: Date.now() + 8000 }, (err: any, response: any) => {
+    client.ExecuteCommand({ vps_id: vpsId, command: '__refresh__', timeout_seconds: 5 }, metadata, { deadline: Date.now() + 30000 }, (err: any, response: any) => {
       if (err) {
         if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
         return reject(err);

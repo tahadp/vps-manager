@@ -14,10 +14,12 @@ const redisOptions = {
     const delay = Math.min(times * 50, 2000);
     return delay;
   },
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: null,
   enableReadyCheck: true,
   autoResubscribe: true,
   autoResendUnfulfilledCommands: true,
+  lazyConnect: false,
+  reconnectOnError: () => true,
 };
 
 export const redisPublisher = new Redis(redisOptions);
@@ -35,6 +37,14 @@ redisSubscriber.on('error', (err) => {
 
 redisCache.on('error', (err) => {
   console.error('Redis Cache Error:', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  if (reason && (reason as any).message && String((reason as any).message).includes('Redis')) {
+    console.error('Suppressed Redis unhandledRejection');
+    return;
+  }
+  console.error('Unhandled Rejection:', reason);
 });
 
 redisPublisher.on('connect', () => console.log('Redis Publisher connected'));
