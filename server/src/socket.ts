@@ -11,10 +11,16 @@ let io: Server;
 
 export const initWebSocket = (server: http.Server) => {
   io = new Server(server, {
-    cors: { origin: true, credentials: true }
+    cors: {
+      origin: (origin: any, callback: any) => {
+        callback(null, true);
+      },
+      credentials: true
+    },
+    transports: ['websocket', 'polling']
   });
 
-  io.use((socket, next) => {
+  io.use((socket: any, next: any) => {
     const token = socket.handshake.auth.token;
     if (!token) return next(new Error('Authentication error'));
     try {
@@ -26,12 +32,11 @@ export const initWebSocket = (server: http.Server) => {
     }
   });
 
-  io.on('connection', (socket) => {
+  io.on('connection', (socket: any) => {
     console.log('Client connected:', socket.id, 'User:', socket.data.user.email);
     let ptyStream: any = null;
     let connectedVpsId: string | null = null;
 
-    // İstemci belirli bir VPS'in odasına(room) katılmak isterse
     socket.on('subscribe_vps', async (vpsId: string) => {
       try {
         const user = socket.data.user;
@@ -48,7 +53,6 @@ export const initWebSocket = (server: http.Server) => {
       }
     });
 
-    // PTY Connection
     socket.on('pty_connect', async (vpsId: string) => {
       try {
         const user = socket.data.user;
@@ -60,7 +64,7 @@ export const initWebSocket = (server: http.Server) => {
         const agentClient = await getAgentClient(vpsId);
         ptyStream = agentClient.ShellStream();
         connectedVpsId = vpsId;
-        
+
         ptyStream.on('data', (msg: any) => {
           socket.emit('pty_output', msg.data.toString('utf-8'));
         });
@@ -92,12 +96,11 @@ export const initWebSocket = (server: http.Server) => {
     });
   });
 
-  // Redis Pub/Sub'dan gelen verileri WebSocket ile ilgili odalara dağıt
-  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', (err, count) => {
+  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', (err: any, count: any) => {
     if (err) console.error('Redis PSubscribe Error:', err);
   });
 
-  redisSubscriber.on('pmessage', (pattern, channel, message) => {
+  redisSubscriber.on('pmessage', (pattern: any, channel: any, message: any) => {
     const vpsId = channel.split(':')[1];
     if (pattern === 'telemetry:*') {
       io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
