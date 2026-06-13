@@ -3,6 +3,7 @@ import axios from 'axios';
 import { prisma } from './prisma';
 import { execOnAgent } from './agentCommands';
 import { writeHistoricalMetric } from './metrics';
+import { io } from './socket';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
@@ -27,8 +28,13 @@ export const pushNotification = async (userId: string, notification: {
   timestamp: number;
 }) => {
   try {
-    await redisCache.lpush(`notifications:user:${userId}`, JSON.stringify(notification));
+    const payload = JSON.stringify(notification);
+    await redisCache.lpush(`notifications:user:${userId}`, payload);
     await redisCache.ltrim(`notifications:user:${userId}`, 0, 49);
+    // F0-2: Live push via WebSocket. Publish to Redis so any node instance can forward.
+    await redisPublisher.publish(`notifications:user:${userId}`, payload);
+    // Also emit directly if io is already initialized in this process.
+    io?.to(`user:${userId}`).emit('notification', notification);
   } catch (err) {
     console.error('pushNotification failed:', err);
   }
@@ -78,10 +84,14 @@ export const initAlertingEngine = () => {
           ipAddress: vps.ipAddress
         }));
 
-        await sendTelegramAlert(
-          vps.userId,
-          `⚠️ VPS ${vps.name} (${vps.ipAddress}) is OFFLINE — no heartbeat received for over 60 seconds.`
-        );
+        // F0-14: Honor VpsSettings.telegramEnabled
+        const offlineSettings = await prisma.vpsSettings.findUnique({ where: { vpsId: vps.id } }).catch(() => null);
+        if (offlineSettings?.telegramEnabled !== false) {
+          await sendTelegramAlert(
+            vps.userId,
+            `⚠️ VPS ${vps.name} (${vps.ipAddress}) is OFFLINE — no heartbeat received for over 60 seconds.`
+          );
+        }
 
         // Check OFFLINE rules for this user/vps
         const offlineRules = activeRules.filter(r =>
@@ -95,8 +105,9 @@ export const initAlertingEngine = () => {
           if (offlineMinutes < rule.offlineThresholdMin) continue;
 
           const cooldownKey = `rule_cooldown:${rule.id}:${vps.id}`;
-          const inCooldown = await redisCache.get(cooldownKey);
-          if (inCooldown) continue;
+          // F0-12: Atomic SET NX EX — only one writer claims the cooldown slot
+          const acquired = await redisCache.set(cooldownKey, '1', 'EX', 3600, 'NX');
+          if (acquired !== 'OK') continue;
 
           await triggerRuleAction(vps, rule, {
             metric: 'OFFLINE',
@@ -105,7 +116,6 @@ export const initAlertingEngine = () => {
             durationMin: 0,
             offlineMinutes
           });
-          await redisCache.set(cooldownKey, '1', 'EX', 3600);
         }
       }
 
@@ -117,9 +127,26 @@ export const initAlertingEngine = () => {
         }
       });
       for (const vps of recoveredVps) {
-        // Recovery is signalled by the next heartbeat; the existing rule already
-        // pushes an OFFLINE alert. We don't auto-recover here (let the agent's
-        // next heartbeat reset status). Skip to avoid duplicate notifications.
+        // F0-3: Emit RECOVERY notification
+        await prisma.vps.update({
+          where: { id: vps.id },
+          data: { status: 'ONLINE' }
+        });
+        redisPublisher.publish(`vps_status:${vps.id}`, JSON.stringify({
+          vpsId: vps.id,
+          status: 'ONLINE',
+          lastHeartbeat: vps.lastHeartbeat,
+          ipAddress: vps.ipAddress
+        }));
+        const recoveryMsg = `✅ ${vps.name} (${vps.ipAddress}) is back ONLINE.`;
+        await sendTelegramAlert(vps.userId, recoveryMsg);
+        await pushNotification(vps.userId, {
+          type: 'RECOVERY',
+          vpsId: vps.id,
+          vpsName: vps.name,
+          message: recoveryMsg,
+          timestamp: Date.now()
+        });
       }
     } catch (err) {
       console.error('Offline detection error:', err);
@@ -171,9 +198,10 @@ export const initAlertingEngine = () => {
           const ruleCooldownKey = `rule_cooldown:${rule.id}:${vps.id}`;
 
           if (isViolated) {
-            // Check cooldown
-            const inCooldown = await redisCache.get(ruleCooldownKey);
-            if (inCooldown) continue; // Already triggered recently, wait
+            // F0-12: Atomic cooldown check-and-set
+            const ruleCooldownKey = `rule_cooldown:${rule.id}:${vps.id}`;
+            const acquired = await redisCache.set(ruleCooldownKey, '1', 'EX', 3600, 'NX');
+            if (acquired !== 'OK') continue; // Already triggered recently, wait
 
             // Tracking duration
             const val = await redisCache.get(ruleStateKey);
@@ -191,9 +219,12 @@ export const initAlertingEngine = () => {
                   durationMin: rule.durationMin
                 });
 
-                // Reset state and set a 1 hour cooldown so it doesn't spam
+                // Reset state (cooldown already set atomically above)
                 await redisCache.del(ruleStateKey);
-                await redisCache.set(ruleCooldownKey, '1', 'EX', 3600);
+              } else {
+                // Within duration window but not yet exceeded; release the cooldown
+                // so the next violation tick can attempt to fire.
+                await redisCache.del(ruleCooldownKey);
               }
             }
           } else {
@@ -219,8 +250,13 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
   durationMin: number;
   offlineMinutes?: number;
 }) => {
-  const baseMsg = rule.customMessage
-    ? applyMessageTemplate(rule.customMessage, vps, context)
+  // F0-14: Honor per-VPS overrides from VpsSettings
+  const settings = await prisma.vpsSettings.findUnique({ where: { vpsId: vps.id } }).catch(() => null);
+  const telegramEnabled = settings?.telegramEnabled !== false; // default true
+  const customMessage = settings?.customAlertMessage || rule.customMessage;
+
+  const baseMsg = customMessage
+    ? applyMessageTemplate(customMessage, vps, context)
     : `🚨 ALERT! VPS ${vps.name} (${vps.ipAddress}) violated rule: ${context.metric} ${rule.condition} ${context.threshold}% for ${context.durationMin} minutes. Current: ${context.value.toFixed(1)}%.`;
 
   const shouldRestart = rule.action === 'RESTART' || rule.action === 'ALERT_AND_RESTART' || rule.restartOnAlert;
@@ -228,7 +264,9 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
   const shouldRunCustom = rule.action === 'CUSTOM_SCRIPT' && rule.customScript;
 
   if (shouldAlert) {
-    await sendTelegramAlert(vps.userId, baseMsg);
+    if (telegramEnabled) {
+      await sendTelegramAlert(vps.userId, baseMsg);
+    }
     await pushNotification(vps.userId, {
       type: context.metric === 'OFFLINE' ? 'OFFLINE' : 'ALERT',
       ruleId: rule.id,
@@ -240,14 +278,22 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
   }
 
   if (shouldRunCustom) {
-    try {
-      await execOnAgent(vps.id, rule.customScript);
-    } catch (cmdErr) {
-      console.error('Failed to execute custom script:', cmdErr);
+    // F0-13: ALLOW_CUSTOM_SCRIPTS safety gate + per-rule timeout
+    if (process.env.ALLOW_CUSTOM_SCRIPTS !== 'true') {
+      console.warn(`[alert] Custom script blocked (ALLOW_CUSTOM_SCRIPTS!=true) for vps=${vps.id} rule=${rule.id}`);
+    } else {
+      try {
+        const timeout = rule.timeoutSeconds ?? 30;
+        await execOnAgent(vps.id, rule.customScript, timeout);
+      } catch (cmdErr) {
+        console.error('Failed to execute custom script:', cmdErr);
+      }
     }
   } else if (shouldRestart) {
+    // F0-13: OS-aware restart command
+    const cmd = vps.os === 'WINDOWS' ? 'shutdown /r /t 0' : 'reboot';
     try {
-      await execOnAgent(vps.id, 'reboot');
+      await execOnAgent(vps.id, cmd);
     } catch (cmdErr) {
       console.error('Failed to execute restart:', cmdErr);
     }

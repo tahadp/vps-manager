@@ -22,10 +22,20 @@ const app = express();
 if (!process.env.JWT_SECRET) {
   throw new Error("FATAL ERROR: JWT_SECRET environment variable is missing.");
 }
+if (process.env.JWT_SECRET.length < 32) {
+  throw new Error("FATAL ERROR: JWT_SECRET must be at least 32 characters (use: openssl rand -hex 64).");
+}
 
-app.use(cors({ 
-  origin: true,  // reflect request origin (dynamic URLs like sslip.io)
-  credentials: true 
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('CORS: origin not allowed'));
+  },
+  credentials: true
 }));
 app.use(express.json());
 

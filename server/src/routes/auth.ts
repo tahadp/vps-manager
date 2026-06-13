@@ -59,7 +59,7 @@ authRouter.post('/login', validate(schemas.login), async (req, res) => {
     });
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    if (user.status !== 'APPROVED' && user.role !== 'ADMIN') {
+    if (user.status !== 'APPROVED') {
       return res.status(403).json({ error: 'Account is pending approval or banned.' });
     }
 
@@ -67,8 +67,14 @@ authRouter.post('/login', validate(schemas.login), async (req, res) => {
     if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
     const expiresIn = rememberMe ? '30d' : '1d';
-    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { expiresIn });
-    
+    const token = jwt.sign({ id: user.id, role: user.role, email: user.email }, JWT_SECRET, { algorithm: 'HS256', expiresIn });
+
+    // Update lastLogin on successful auth
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    }).catch((err) => console.error('lastLogin update failed:', err));
+
     res.json({ token, user: { id: user.id, email: user.email, username: user.username, role: user.role } });
   } catch (error) {
     res.status(500).json({ error: 'Internal server error' });

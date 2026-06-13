@@ -140,7 +140,7 @@ export const schemas = {
   createRule: z.object({
     vpsId: z.string().uuid().optional(),
     metric: z.enum(['CPU', 'RAM', 'DISK', 'OFFLINE']).optional(),
-    condition: z.enum(['GT', 'LT', 'EQ', 'GTE', 'LTE']).optional(),
+    condition: z.enum(['>', '<']).optional(),
     threshold: z.number().min(0).max(100).optional(),
     durationMin: z.number().int().min(1).max(1440).optional(),
     offlineThresholdMin: z.number().int().min(1).max(10080).optional(),

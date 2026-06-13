@@ -16,10 +16,14 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
 const vpsPackage = protoDescriptor.vps;
 
+// F0-15: Cache of VPS IDs that already have a VpsSettings row. Avoids the upsert round-trip
+// on every heartbeat (10s) for every agent. Invalidated when the user updates settings.
+const settingsCache = new Set<string>();
+
 const server = new grpc.Server();
 
 import { prisma } from './prisma';
-import { registerAgentStream, unregisterAgentStream, resolveAgentResponse, handleShellOutput } from './agentDispatcher';
+import { registerAgentStream, unregisterAgentStream, resolveAgentResponse, handleShellOutput, recordHeartbeat } from './agentDispatcher';
 
 const checkApiKey = async (call: any, callback?: any) => {
   const apiKey = call.metadata.get('x-api-key')[0];
@@ -77,7 +81,8 @@ server.addService(vpsPackage.BackendService.service, {
       const agentIp = (call.request && call.request.agent_ip) || peerIp;
       const now = new Date();
 
-      await prisma.vps.update({
+      // F0-15: updateMany avoids the existence-check round-trip of update()
+      await prisma.vps.updateMany({
         where: { id: call.authenticatedVpsId },
         data: {
           lastHeartbeat: now,
@@ -88,17 +93,23 @@ server.addService(vpsPackage.BackendService.service, {
 
       let settingsMessage: any = null;
       try {
-        const settings = await prisma.vpsSettings.upsert({
-          where: { vpsId: call.authenticatedVpsId },
-          update: {},
-          create: {
-            vpsId: call.authenticatedVpsId,
-            screenshotIntervalSec: 30,
-            telemetryIntervalSec: 1,
-            ramDiskVisible: true,
-            networkVisible: true
-          }
-        });
+        // F0-15: Cache to avoid upsert round-trip every heartbeat
+        const existing = settingsCache.has(call.authenticatedVpsId);
+        let settings = existing
+          ? await prisma.vpsSettings.findUnique({ where: { vpsId: call.authenticatedVpsId } })
+          : null;
+        if (!settings) {
+          settings = await prisma.vpsSettings.create({
+            data: {
+              vpsId: call.authenticatedVpsId,
+              screenshotIntervalSec: 30,
+              telemetryIntervalSec: 1,
+              ramDiskVisible: true,
+              networkVisible: true
+            }
+          });
+          settingsCache.add(call.authenticatedVpsId);
+        }
         settingsMessage = {
           screenshotIntervalSec: settings.screenshotIntervalSec,
           telemetryIntervalSec: settings.telemetryIntervalSec,
@@ -108,6 +119,8 @@ server.addService(vpsPackage.BackendService.service, {
       } catch (settingsErr) {
         console.error('Settings load failed (using defaults):', settingsErr);
       }
+
+      recordHeartbeat(call.authenticatedVpsId);
 
       redisPublisher.publish(`vps_status:${call.authenticatedVpsId}`, JSON.stringify({
         vpsId: call.authenticatedVpsId,

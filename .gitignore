@@ -45,3 +45,16 @@ AGENTS.md
 proje.md
 task.md
 implementation_plan.md
+
+# Database (Prisma local dev)
+/server/prisma/dev.db
+/server/prisma/dev.db-journal
+
+# Build / Tooling
+/agent/dist
+/agent/coverage.out
+protoc/
+
+# OpenCode skill sessions
+.opencode/
+

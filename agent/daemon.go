@@ -81,7 +81,10 @@ type program struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	refreshCh chan struct{}
+	// F0-19: Separate refresh channels for telemetry and screenshot.
+	// Previously both consumed the same single channel and raced.
+	refreshTelemetryCh chan struct{}
+	refreshScreenshotCh chan struct{}
 
 	telemetryStream pb.BackendService_StreamTelemetryClient
 	telemetryMu     sync.Mutex
@@ -107,7 +110,8 @@ func newProgram() *program {
 
 func (p *program) Start(s service.Service) error {
 	p.ctx, p.cancel = context.WithCancel(context.Background())
-	p.refreshCh = make(chan struct{}, 1)
+	p.refreshTelemetryCh = make(chan struct{}, 1)
+	p.refreshScreenshotCh = make(chan struct{}, 1)
 	go p.run()
 	return nil
 }
@@ -170,9 +174,14 @@ func (p *program) heartbeatLoop(backendClient pb.BackendServiceClient) {
 	}
 }
 
+// F0-19: Triggers both telemetry and screenshot. Non-blocking, debounced by 1-slot buffer.
 func (p *program) triggerRefresh() {
 	select {
-	case p.refreshCh <- struct{}{}:
+	case p.refreshTelemetryCh <- struct{}{}:
+	default:
+	}
+	select {
+	case p.refreshScreenshotCh <- struct{}{}:
 	default:
 	}
 }
@@ -233,7 +242,7 @@ func (p *program) telemetryLoop(backendClient pb.BackendServiceClient) {
 			select {
 			case <-p.ctx.Done():
 				return
-			case <-p.refreshCh:
+			case <-p.refreshTelemetryCh:
 				p.sendTelemetryImmediate()
 			default:
 			}
@@ -287,7 +296,7 @@ func (p *program) screenshotLoop(backendClient pb.BackendServiceClient) {
 		}
 
 		select {
-		case <-p.refreshCh:
+		case <-p.refreshScreenshotCh:
 			p.captureAndUpload(backendClient)
 		default:
 		}

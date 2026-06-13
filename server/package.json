@@ -6,7 +6,10 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node src/index.ts",
-    "build": "prisma generate && node scripts/sync-proto.js && tsc && cp -r proto dist/proto",
+    "build:proto": "node scripts/sync-proto.js",
+    "build:tsc": "tsc",
+    "build:copyproto": "node -e \"const fs=require('fs'),path=require('path');const s=path.join(__dirname,'proto'),d=path.join(__dirname,'dist','proto');fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){fs.copyFileSync(path.join(s,f),path.join(d,f));}\"",
+    "build": "prisma generate && npm run build:proto && npm run build:tsc && npm run build:copyproto",
     "start": "node dist/index.js"
   },
   "keywords": [],

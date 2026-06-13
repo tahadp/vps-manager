@@ -10,8 +10,24 @@ interface PendingRequest {
 }
 
 const streamMap = new Map<string, ServerWritableStream>();
+const heartbeatMap = new Map<string, number>();
 const pendingRequests = new Map<string, PendingRequest>();
 const DEFAULT_TIMEOUT_MS = 30_000;
+const HEARTBEAT_TTL_MS = 60_000;
+const HEARTBEAT_PRUNE_INTERVAL_MS = 30_000;
+
+function pruneStaleHeartbeats() {
+  const now = Date.now();
+  for (const [vpsId, ts] of heartbeatMap) {
+    if (now - ts > HEARTBEAT_TTL_MS) heartbeatMap.delete(vpsId);
+  }
+}
+
+setInterval(pruneStaleHeartbeats, HEARTBEAT_PRUNE_INTERVAL_MS).unref();
+
+export function recordHeartbeat(vpsId: string): void {
+  heartbeatMap.set(vpsId, Date.now());
+}
 
 function rejectAllForVps(vpsId: string, reason: string) {
   for (const [id, p] of pendingRequests.entries()) {
@@ -35,6 +51,7 @@ export function registerAgentStream(vpsId: string, stream: ServerWritableStream)
 export function unregisterAgentStream(vpsId: string, stream: ServerWritableStream) {
   if (streamMap.get(vpsId) === stream) {
     streamMap.delete(vpsId);
+    heartbeatMap.delete(vpsId);
     rejectAllForVps(vpsId, 'Agent stream disconnected');
     console.log(`[agentIO] stream unregistered for vps=${vpsId} (total=${streamMap.size})`);
   }

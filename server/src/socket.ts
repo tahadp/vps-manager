@@ -8,13 +8,17 @@ import { openShellOnAgent, sendShellInput, closeShellOnAgent, getShellSession } 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
 let io: Server;
+export { io };
+
+const getCorsOrigins = (): string[] => {
+  const raw = process.env.CORS_ORIGIN || 'http://localhost:3000';
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+};
 
 export const initWebSocket = (server: http.Server) => {
   io = new Server(server, {
     cors: {
-      origin: (origin: any, callback: any) => {
-        callback(null, true);
-      },
+      origin: getCorsOrigins(),
       credentials: true
     },
     transports: ['websocket', 'polling']
@@ -34,6 +38,12 @@ export const initWebSocket = (server: http.Server) => {
 
   io.on('connection', (socket: any) => {
     console.log('Client connected:', socket.id, 'User:', socket.data.user.email);
+
+    // Per-user room for live notification push (F0-2)
+    if (socket.data.user?.id) {
+      socket.join(`user:${socket.data.user.id}`);
+    }
+
     const activeSessions = new Map<string, string>();
 
     socket.on('subscribe_vps', async (vpsId: string) => {
@@ -104,7 +114,7 @@ export const initWebSocket = (server: http.Server) => {
     });
   });
 
-  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', 'vps_event:*', 'shell:output:*', (err: any, count: any) => {
+  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', 'vps_event:*', 'shell:output:*', 'notifications:user:*', (err: any, count: any) => {
     if (err) console.error('Redis PSubscribe Error:', err);
   });
 
@@ -130,6 +140,11 @@ export const initWebSocket = (server: http.Server) => {
         sessionId,
         data: Buffer.from(payload.data, 'base64').toString('utf-8')
       });
+    } else if (pattern === 'notifications:user:*') {
+      // F0-2: Live notification push to the specific user's room
+      const userId = channel.split(':')[1];
+      const payload = JSON.parse(message);
+      io.to(`user:${userId}`).emit('notification', payload);
     }
   });
 };

@@ -6,60 +6,46 @@ import { Mail, Lock, User, ShieldCheck, ArrowRight, Server, TerminalSquare, Aler
 
 export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [email, setEmail] = useState(''); // for register
   const [username, setUsername] = useState(''); // for register
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
-  
+  const [submitting, setSubmitting] = useState(false);
+
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false); // Email verification stub
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setError('');
     setMsg('');
-
-    if (isForgotPassword) {
-      setMsg('If an account exists, a password reset link has been sent.');
-      setIsForgotPassword(false);
-      return;
-    }
+    setSubmitting(true);
 
     const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-    
-    // Email verification stub check
-    if (isRegister && !isVerifying) {
-      setIsVerifying(true);
-      setMsg('Check your email to verify your account.');
-      return;
-    }
 
     try {
-      const payload = isRegister 
-        ? { email, username, password } 
+      const payload = isRegister
+        ? { email, username, password }
         : { identifier, password, rememberMe };
-        
+
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      
+
       if (!res.ok) {
         setError(data.error || 'Something went wrong');
-        setIsVerifying(false); // Reset stub
         return;
       }
 
       if (isRegister) {
         setMsg('Registration successful. Waiting for admin approval.');
         setIsRegister(false);
-        setIsVerifying(false);
         setPassword('');
       } else {
         localStorage.setItem('token', data.token);
@@ -68,6 +54,8 @@ export default function Login() {
       }
     } catch (err) {
       setError('Failed to connect to server');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -76,7 +64,7 @@ export default function Login() {
       {/* Background glow effects */}
       <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-brand-subtle blur-[150px] rounded-full pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-dataviz-blue/10 blur-[120px] rounded-full pointer-events-none" />
-      
+
       {/* Left pane: Branding / Graphic */}
       <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative z-10">
         <div className="flex items-center gap-3">
@@ -85,7 +73,7 @@ export default function Login() {
           </div>
           <span className="text-xl font-bold text-text-primary tracking-tight">VPS Manager</span>
         </div>
-        
+
         <div className="mb-20">
           <h1 className="text-5xl font-bold text-text-primary leading-tight mb-6">
             Command your infrastructure <br />
@@ -95,7 +83,7 @@ export default function Login() {
             A high-performance management console built for speed, security, and effortless control of your virtual private servers.
           </p>
         </div>
-        
+
         <div className="flex items-center gap-4 text-sm text-text-muted">
           <TerminalSquare className="w-4 h-4" />
           <span>System v2.0.4 — Secure connection established</span>
@@ -113,7 +101,7 @@ export default function Login() {
             <span className="text-2xl font-bold text-text-primary tracking-tight">VPS Manager</span>
           </div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
@@ -121,23 +109,22 @@ export default function Login() {
           >
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-text-primary mb-2">
-                {isForgotPassword ? 'Reset Password' : isRegister ? 'Create an account' : 'Welcome back'}
+                {isRegister ? 'Create an account' : 'Welcome back'}
               </h2>
               <p className="text-text-secondary text-sm">
-                {isForgotPassword 
-                  ? 'Enter your email address to receive a reset link.'
-                  : isRegister 
-                    ? 'Enter your details to request access to the platform.' 
-                    : 'Enter your credentials to access your dashboard.'}
+                {isRegister
+                  ? 'Enter your details to request access to the platform.'
+                  : 'Enter your credentials to access your dashboard.'}
               </p>
             </div>
 
             <AnimatePresence mode="wait">
               {error && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }} 
-                  animate={{ opacity: 1, height: 'auto' }} 
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
+                  role="alert"
                   className="mb-6 p-4 bg-status-error/10 border border-status-error/20 rounded-xl flex items-start gap-3"
                 >
                   <AlertCircle className="w-5 h-5 text-status-error shrink-0 mt-0.5" />
@@ -145,10 +132,12 @@ export default function Login() {
                 </motion.div>
               )}
               {msg && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }} 
-                  animate={{ opacity: 1, height: 'auto' }} 
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
+                  role="status"
+                  aria-live="polite"
                   className="mb-6 p-4 bg-status-success/10 border border-status-success/20 rounded-xl flex items-start gap-3"
                 >
                   <ShieldCheck className="w-5 h-5 text-status-success shrink-0 mt-0.5" />
@@ -158,77 +147,54 @@ export default function Login() {
             </AnimatePresence>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {isForgotPassword ? (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email Address</label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Mail className="w-4 h-4 text-text-muted" />
-                      </div>
-                      <input 
-                        type="email" 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                        required
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
-                        placeholder="name@company.com"
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : !isRegister ? (
+              {!isRegister ? (
                 // Login Fields
                 <>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email or Username</label>
+                    <label htmlFor="identifier" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email or Username</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <User className="w-4 h-4 text-text-muted" />
                       </div>
-                      <input 
-                        type="text" 
-                        value={identifier} 
-                        onChange={(e) => setIdentifier(e.target.value)} 
+                      <input
+                        id="identifier"
+                        type="text"
+                        value={identifier}
+                        onChange={(e) => setIdentifier(e.target.value)}
                         required
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+                        disabled={submitting}
+                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
                         placeholder="admin or name@company.com"
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
-                      <button 
-                        type="button" 
-                        onClick={() => { setIsForgotPassword(true); setError(''); setMsg(''); }}
-                        className="text-xs text-brand hover:text-brand-light transition-colors"
-                      >
-                        Forgot Password?
-                      </button>
-                    </div>
+                    <label htmlFor="password" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <Lock className="w-4 h-4 text-text-muted" />
                       </div>
-                      <input 
-                        type="password" 
-                        value={password} 
-                        onChange={(e) => setPassword(e.target.value)} 
+                      <input
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
                         required
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all"
+                        disabled={submitting}
+                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
                         placeholder="••••••••"
                       />
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">
-                    <input 
-                      type="checkbox" 
-                      id="remember" 
+                    <input
+                      type="checkbox"
+                      id="remember"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
+                      disabled={submitting}
                       className="w-4 h-4 rounded border-border-DEFAULT bg-neutral-bg1 text-brand focus:ring-brand focus:ring-offset-neutral-bg2 transition-colors cursor-pointer"
                     />
                     <label htmlFor="remember" className="text-sm text-text-secondary cursor-pointer select-none">
@@ -240,17 +206,18 @@ export default function Login() {
                 // Register Fields
                 <>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Username</label>
+                    <label htmlFor="username" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Username</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <User className="w-4 h-4 text-text-muted" />
                       </div>
-                      <input 
-                        type="text" 
-                        value={username} 
-                        onChange={(e) => setUsername(e.target.value)} 
+                      <input
+                        id="username"
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
                         required
-                        disabled={isVerifying}
+                        disabled={submitting}
                         className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
                         placeholder="johndoe"
                       />
@@ -258,35 +225,37 @@ export default function Login() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email Address</label>
+                    <label htmlFor="reg-email" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email Address</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <Mail className="w-4 h-4 text-text-muted" />
                       </div>
-                      <input 
-                        type="email" 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
+                      <input
+                        id="reg-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         required
-                        disabled={isVerifying}
+                        disabled={submitting}
                         className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
                         placeholder="name@company.com"
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
+                    <label htmlFor="reg-password" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <Lock className="w-4 h-4 text-text-muted" />
                       </div>
-                      <input 
-                        type="password" 
-                        value={password} 
-                        onChange={(e) => setPassword(e.target.value)} 
+                      <input
+                        id="reg-password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
                         required
-                        disabled={isVerifying}
+                        disabled={submitting}
                         className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
                         placeholder="••••••••"
                       />
@@ -295,33 +264,29 @@ export default function Login() {
                 </>
               )}
 
-              <button 
+              <button
                 type="submit"
-                className="w-full group flex items-center justify-center gap-2 p-3 mt-4 bg-brand hover:bg-brand-hover text-white font-medium rounded-xl transition-all active:scale-[0.98] shadow-glow"
+                disabled={submitting}
+                className="w-full group flex items-center justify-center gap-2 p-3 mt-4 bg-brand hover:bg-brand-hover text-white font-medium rounded-xl transition-all active:scale-[0.98] shadow-glow disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {isForgotPassword ? 'Send Reset Link' : isRegister ? (isVerifying ? 'Verify & Continue' : 'Create Account') : 'Sign In'}
+                {submitting ? 'Please wait…' : (isRegister ? 'Create Account' : 'Sign In')}
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
             </form>
 
             <div className="mt-8 pt-6 border-t border-border-subtle text-center">
               <p className="text-sm text-text-secondary">
-                {isForgotPassword ? 'Remember your password?' : isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button 
+                {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
                   type="button"
-                  onClick={() => { 
-                    if (isForgotPassword) {
-                      setIsForgotPassword(false);
-                    } else {
-                      setIsRegister(!isRegister); 
-                    }
-                    setError(''); 
-                    setMsg(''); 
-                    setIsVerifying(false);
-                  }} 
+                  onClick={() => {
+                    setIsRegister(!isRegister);
+                    setError('');
+                    setMsg('');
+                  }}
                   className="text-brand hover:text-brand-light font-medium transition-colors"
                 >
-                  {isForgotPassword ? 'Sign In' : isRegister ? 'Sign In' : 'Sign up'}
+                  {isRegister ? 'Sign In' : 'Sign up'}
                 </button>
               </p>
             </div>
