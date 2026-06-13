@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Trash2, Bell, AlertCircle, Filter, ChevronDown } from 'lucide-react';
+import io from 'socket.io-client';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -58,6 +59,18 @@ export default function VpsAlertsPage({ params }: { params: Promise<{ id: string
     if (!token) { router.push('/login'); return; }
     fetchRules(token);
   }, [id, router]);
+
+  useEffect(() => {
+    const socket = io(API, { transports: ['websocket'] });
+    socket.on('vps_event', (e: any) => {
+      if (e?.type === 'RULES_CHANGED') {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        fetchRules(token);
+      }
+    });
+    return () => { socket.disconnect(); };
+  }, [id]);
 
   const fetchRules = async (token: string) => {
     try {

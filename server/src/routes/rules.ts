@@ -2,8 +2,22 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth } from '../middlewares/authMiddleware';
 import { validate, schemas } from '../middlewares/validation';
+import { redisPublisher } from '../redis';
 
 const router = Router();
+
+const publishRulesChanged = (userId: string, ruleId: string, action: 'created' | 'updated' | 'deleted') => {
+  try {
+    redisPublisher.publish('vps_event:global', JSON.stringify({
+      type: 'RULES_CHANGED',
+      userId,
+      ruleId,
+      action
+    }));
+  } catch (err) {
+    console.error('RULES_CHANGED publish failed:', err);
+  }
+};
 
 // Get user's rules
 router.get('/', requireAuth, async (req: any, res) => {
@@ -52,6 +66,8 @@ router.post('/', requireAuth, validate(schemas.createRule), async (req: any, res
       }
     });
 
+    publishRulesChanged(req.user.id, rule.id, 'created');
+
     res.status(201).json(rule);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create rule' });
@@ -86,6 +102,9 @@ router.put('/:id', requireAuth, validate(schemas.createRule), async (req: any, r
         customScript: action === 'CUSTOM_SCRIPT' ? script : null
       }
     });
+
+    publishRulesChanged(req.user.id, updated.id, 'updated');
+
     res.json(updated);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update rule' });
@@ -106,6 +125,8 @@ router.delete('/:id', requireAuth, async (req: any, res) => {
     await prisma.alertRule.delete({
       where: { id: req.params.id }
     });
+
+    publishRulesChanged(req.user.id, req.params.id, 'deleted');
 
     res.json({ success: true });
   } catch (error) {

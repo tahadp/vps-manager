@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Bell, Plus, Trash2, Filter, ChevronDown, Server, AlertCircle } from 'lucide-react';
+import io from 'socket.io-client';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -66,6 +67,21 @@ export default function GlobalAlertsPage() {
       if (Array.isArray(vpsData)) setVpsList(vpsData);
     }).finally(() => setLoading(false));
   }, [router]);
+
+  useEffect(() => {
+    const socket = io(API, { transports: ['websocket'] });
+    socket.on('vps_event', (e: any) => {
+      if (e?.type === 'RULES_CHANGED') {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        fetch(`${API}/api/rules`, { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(d => { if (Array.isArray(d)) setRules(d); })
+          .catch(() => {});
+      }
+    });
+    return () => { socket.disconnect(); };
+  }, []);
 
   const filteredRules = rules.filter(r => {
     if (filterVps !== 'all' && r.vpsId !== filterVps && r.vpsId !== null) return false;
