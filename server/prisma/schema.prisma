@@ -46,6 +46,11 @@ model Vps {
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   alertRules AlertRule[]
   settings   VpsSettings?
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status, lastHeartbeat])
+  @@index([ipAddress])
 }
 
 model VpsSettings {
@@ -72,6 +77,9 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([target])
 }
 
 enum Role {
@@ -119,6 +127,9 @@ model AlertRule {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   vps  Vps? @relation(fields: [vpsId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, vpsId])
 }
 
 model HistoricalMetric {
