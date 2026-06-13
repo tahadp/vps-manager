@@ -24,7 +24,7 @@ const logAudit = async (userId: string, target: string, action: string, details:
 
 // Param schemas
 const idParamSchema = z.object({ id: z.string().uuid('Invalid VPS ID') });
-const fileQuerySchema = z.object({ path: z.string().min(1, 'Path is required').max(1000) });
+const fileQuerySchema = z.object({ path: z.string().max(1000).default('/') });
 const metricsQuerySchema = z.object({ hours: z.string().optional() });
 
 // Get all VPS instances

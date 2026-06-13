@@ -17,8 +17,17 @@ const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
 const AgentService = protoDescriptor.vps.AgentService;
 
 const AGENT_PORT = 50052;
+const GRPC_DEADLINE = 10000; // 10 seconds
 
 const clientCache = new Map<string, any>();
+
+export function clearAgentClient(vpsId: string): void {
+  const cached = clientCache.get(vpsId);
+  if (cached) {
+    try { cached.close(); } catch {}
+    clientCache.delete(vpsId);
+  }
+}
 
 export async function getAgentClient(vpsId: string): Promise<any> {
   if (!vpsId) throw new Error('VPS ID is required');
@@ -33,7 +42,8 @@ export async function getAgentClient(vpsId: string): Promise<any> {
 
   const client = new AgentService(
     `${vps.ipAddress}:${AGENT_PORT}`,
-    grpc.credentials.createInsecure()
+    grpc.credentials.createInsecure(),
+    { 'grpc.enable_http_proxy': 0 }
   );
   clientCache.set(vpsId, client);
   return client;
@@ -42,8 +52,11 @@ export async function getAgentClient(vpsId: string): Promise<any> {
 export async function executeCommand(vpsId: string, command: string): Promise<{ success: boolean; output: string }> {
   const client = await getAgentClient(vpsId);
   return new Promise((resolve, reject) => {
-    client.ExecuteCommand({ vps_id: vpsId, command }, (err: any, response: any) => {
-      if (err) return reject(err);
+    client.ExecuteCommand({ vps_id: vpsId, command }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+      if (err) {
+        if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
+        return reject(err);
+      }
       resolve(response);
     });
   });
@@ -52,8 +65,11 @@ export async function executeCommand(vpsId: string, command: string): Promise<{ 
 export async function listDirectory(vpsId: string, dirPath: string): Promise<any> {
   const client = await getAgentClient(vpsId);
   return new Promise((resolve, reject) => {
-    client.ListDirectory({ vps_id: vpsId, path: dirPath }, (err: any, response: any) => {
-      if (err) return reject(err);
+    client.ListDirectory({ vps_id: vpsId, path: dirPath }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+      if (err) {
+        if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
+        return reject(err);
+      }
       resolve(response);
     });
   });
@@ -62,8 +78,11 @@ export async function listDirectory(vpsId: string, dirPath: string): Promise<any
 export async function readFile(vpsId: string, filePath: string): Promise<any> {
   const client = await getAgentClient(vpsId);
   return new Promise((resolve, reject) => {
-    client.ReadFile({ vps_id: vpsId, path: filePath }, (err: any, response: any) => {
-      if (err) return reject(err);
+    client.ReadFile({ vps_id: vpsId, path: filePath }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+      if (err) {
+        if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
+        return reject(err);
+      }
       resolve(response);
     });
   });
@@ -72,8 +91,11 @@ export async function readFile(vpsId: string, filePath: string): Promise<any> {
 export async function writeFile(vpsId: string, filePath: string, content: Buffer): Promise<any> {
   const client = await getAgentClient(vpsId);
   return new Promise((resolve, reject) => {
-    client.WriteFile({ vps_id: vpsId, path: filePath, content }, (err: any, response: any) => {
-      if (err) return reject(err);
+    client.WriteFile({ vps_id: vpsId, path: filePath, content }, { deadline: Date.now() + GRPC_DEADLINE }, (err: any, response: any) => {
+      if (err) {
+        if (err.code === grpc.status.UNAVAILABLE || err.code === grpc.status.DEADLINE_EXCEEDED) clearAgentClient(vpsId);
+        return reject(err);
+      }
       resolve(response);
     });
   });

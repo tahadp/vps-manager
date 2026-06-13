@@ -27,6 +27,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+function formatNetworkSpeed(bytesPerSec: number): string {
+  if (!bytesPerSec || bytesPerSec === 0) return '0 MB/s';
+  const mbps = bytesPerSec / (1024 * 1024);
+  return `${mbps.toFixed(2)} MB/s`;
+}
+
 function formatTimeAgo(dateStr: string | null): string {
   if (!dateStr) return "Never";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -48,6 +54,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const [telemetry, setTelemetry] = useState<any>({});
   const [chartData, setChartData] = useState<any[]>([]);
   const [chartHours, setChartHours] = useState(24);
+  const [chartMetric, setChartMetric] = useState<'all' | 'cpu' | 'ram'>('all');
   const [screenshot, setScreenshot] = useState<string | null>(null);
   const [socketStatus, setSocketStatus] = useState<"connecting" | "connected" | "error">("connecting");
   const socketRef = useRef<Socket | null>(null);
@@ -97,8 +104,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
         setChartData(metrics.map((m: any) => ({
           time: new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
           cpu: m.cpu,
-          ram: m.ram,
-          disk: m.disk
+          ram: m.ram
         })));
       } else {
         setChartData([]);
@@ -134,8 +140,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
             const next = [...prev, {
               time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
               cpu: d.CPUUsage,
-              ram: d.RAMUsage,
-              disk: d.DiskUsage
+              ram: d.RAMUsage
             }];
             return next.slice(-500);
           });
@@ -467,7 +472,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                       {/* Network */}
                       <div className="flex justify-between text-xs pt-1 border-t border-border-subtle">
                         <span className="text-text-muted flex items-center gap-1"><ArrowUpDown className="w-3 h-3" /> Network</span>
-                        <span className="text-text-primary font-mono">↑{formatBytes(telemetry.NetTx || 0)} ↓{formatBytes(telemetry.NetRx || 0)}</span>
+                        <span className="text-text-primary font-mono">↑{formatNetworkSpeed(telemetry.NetTx || 0)} ↓{formatNetworkSpeed(telemetry.NetRx || 0)}</span>
                       </div>
                     </div>
                   </div>
@@ -536,12 +541,21 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
               <div className="absolute inset-0 bg-neutral-bg1 flex flex-col p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-text-primary">Resource Usage</h2>
-                  <div className="flex gap-1 bg-neutral-bg2 rounded-lg p-0.5 border border-border-subtle">
-                    {timeRanges.map(tr => (
-                      <button key={tr.value} onClick={() => setChartHours(tr.value)} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartHours === tr.value ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}>
-                        {tr.label}
-                      </button>
-                    ))}
+                  <div className="flex gap-2">
+                    <div className="flex gap-1 bg-neutral-bg2 rounded-lg p-0.5 border border-border-subtle">
+                      {([['all', 'All'], ['cpu', 'CPU'], ['ram', 'RAM']] as const).map(([key, label]) => (
+                        <button key={key} onClick={() => setChartMetric(key)} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartMetric === key ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1 bg-neutral-bg2 rounded-lg p-0.5 border border-border-subtle">
+                      {timeRanges.map(tr => (
+                        <button key={tr.value} onClick={() => setChartHours(tr.value)} className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${chartHours === tr.value ? 'bg-brand text-white' : 'text-text-secondary hover:text-text-primary'}`}>
+                          {tr.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div className="flex-1 w-full min-h-[300px]">
@@ -553,9 +567,8 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                         <YAxis stroke="#a1a1aa" fontSize={12} tickLine={false} axisLine={false} unit="%" />
                         <Tooltip contentStyle={{ backgroundColor: '#18181b', borderColor: '#3f3f46', borderRadius: '8px' }} itemStyle={{ color: '#f4f4f5' }} />
                         <Legend />
-                        <Line type="monotone" dataKey="cpu" name="CPU" stroke="#8251EE" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-                        <Line type="monotone" dataKey="ram" name="RAM" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
-                        <Line type="monotone" dataKey="disk" name="Disk" stroke="#3b82f6" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />
+                        {(chartMetric === 'all' || chartMetric === 'cpu') && <Line type="monotone" dataKey="cpu" name="CPU" stroke="#8251EE" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />}
+                        {(chartMetric === 'all' || chartMetric === 'ram') && <Line type="monotone" dataKey="ram" name="RAM" stroke="#a855f7" strokeWidth={2} dot={false} activeDot={{ r: 6 }} />}
                       </LineChart>
                     </ResponsiveContainer>
                   ) : (
@@ -611,8 +624,8 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
               <div className="flex items-center justify-between pt-2 border-t border-border-subtle">
                 <span className="text-xs text-text-muted flex items-center gap-1.5"><ArrowUpDown className="w-3.5 h-3.5" /> Network</span>
                 <div className="text-xs font-mono text-text-primary flex gap-3">
-                  <span className="text-status-success">↑ {formatBytes(telemetry.NetTx || 0)}</span>
-                  <span className="text-dataviz-blue">↓ {formatBytes(telemetry.NetRx || 0)}</span>
+                  <span className="text-status-success">↑ {formatNetworkSpeed(telemetry.NetTx || 0)}</span>
+                  <span className="text-dataviz-blue">↓ {formatNetworkSpeed(telemetry.NetRx || 0)}</span>
                 </div>
               </div>
             </div>

@@ -54,7 +54,8 @@ export function validate(schema: ZodSchema) {
 export function validateQuery(schema: ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = schema.safeParse(req.query);
+      const query = req.query || {};
+      const result = schema.safeParse(query);
       if (!result.success) {
         const errors = result.error.issues.map((e: any) => ({
           field: e.path.join('.'),

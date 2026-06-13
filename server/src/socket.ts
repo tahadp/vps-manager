@@ -3,7 +3,7 @@ import http from 'http';
 import { redisSubscriber, redisCache } from './redis';
 import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
-import { getAgentClient } from './grpcClient';
+import { getAgentClient, clearAgentClient } from './grpcClient';
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -70,6 +70,7 @@ export const initWebSocket = (server: http.Server) => {
         });
 
         ptyStream.on('error', (err: any) => {
+          clearAgentClient(vpsId);
           socket.emit('pty_error', err.message);
         });
 
@@ -78,6 +79,7 @@ export const initWebSocket = (server: http.Server) => {
         });
 
       } catch (err: any) {
+        clearAgentClient(vpsId);
         socket.emit('pty_error', err.message);
       }
     });
