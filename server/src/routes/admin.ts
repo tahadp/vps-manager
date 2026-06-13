@@ -9,7 +9,7 @@ adminRouter.use(requireAuth, requireAdmin);
 adminRouter.get('/users', async (req, res) => {
   try {
     const users = await prisma.user.findMany({
-      select: { id: true, email: true, role: true, status: true, tier: true, createdAt: true }
+      select: { id: true, email: true, username: true, role: true, status: true, tier: true, lastLogin: true, createdAt: true }
     });
     res.json(users);
   } catch (error) {
@@ -37,5 +37,20 @@ adminRouter.put('/users/:id/status', async (req, res) => {
     res.json({ message: 'Status updated', status: updatedUser.status });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// F0-17: Admin sets user tier
+adminRouter.put('/users/:id/tier', async (req, res) => {
+  const { id } = req.params;
+  const { tier } = req.body;
+  if (!['FREE', 'PRO'].includes(tier)) {
+    return res.status(400).json({ error: 'Invalid tier' });
+  }
+  try {
+    const updated = await prisma.user.update({ where: { id }, data: { tier } });
+    res.json({ message: 'Tier updated', tier: updated.tier });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update tier' });
   }
 });

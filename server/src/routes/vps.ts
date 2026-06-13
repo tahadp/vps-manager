@@ -112,6 +112,24 @@ vpsRouter.get('/:id', requireAuth, validateParams(idParamSchema), async (req: Au
 vpsRouter.post('/', requireAuth, validate(schemas.createVps), async (req: AuthRequest, res) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can add VPS' });
   const { name, ipAddress, os, customOsName, userId } = req.body;
+
+  // F0-17: Tier-based VPS cap
+  const TIER_LIMITS: Record<string, number> = { FREE: 2, PRO: 50 };
+  if (userId) {
+    const target = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { tier: true }
+    });
+    const tier = target?.tier || 'FREE';
+    const limit = TIER_LIMITS[tier] ?? TIER_LIMITS.FREE;
+    const count = await prisma.vps.count({ where: { userId } });
+    if (count >= limit) {
+      return res.status(403).json({
+        error: `Tier ${tier} VPS limit (${limit}) reached. Upgrade to PRO to add more.`
+      });
+    }
+  }
+
   try {
     let osEnum: OsType = OsType.LINUX;
     if (os) {

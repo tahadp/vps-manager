@@ -2,17 +2,20 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, MessageCircle, Shield, Bell, Plus, Trash2, Key, CheckCircle2, AlertCircle } from "lucide-react";
+import { Settings as SettingsIcon, MessageCircle, Shield, Bell, Plus, Trash2, Key, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
+
+const CHART_METRICS = ['cpu', 'ram', 'disk', 'network'] as const;
+type ChartMetric = typeof CHART_METRICS[number];
 
 export default function Settings() {
   const router = useRouter();
-  
+
   // Telegram State
   const [token, setToken] = useState("");
   const [chatId, setChatId] = useState("");
   const [telegramMsg, setTelegramMsg] = useState("");
   const [telegramError, setTelegramError] = useState("");
-  
+
   // Password State
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -31,7 +34,12 @@ export default function Settings() {
     action: 'NOTIFY_ONLY',
     script: ''
   });
-  
+
+  // F0-18: User-level chartVisibleMetrics
+  const [chartVisibleMetrics, setChartVisibleMetrics] = useState<ChartMetric[]>([...CHART_METRICS]);
+  const [chartMsg, setChartMsg] = useState("");
+  const [chartError, setChartError] = useState("");
+
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +69,17 @@ export default function Settings() {
       });
       if (resVps.ok) {
         setVpsList(await resVps.json());
+      }
+
+      // F0-18: Fetch user-level chart preferences
+      const resPrefs = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
+        headers: { Authorization: `Bearer ${jwt}` }
+      });
+      if (resPrefs.ok) {
+        const prefs = await resPrefs.json();
+        if (Array.isArray(prefs.chartVisibleMetrics) && prefs.chartVisibleMetrics.length > 0) {
+          setChartVisibleMetrics(prefs.chartVisibleMetrics);
+        }
       }
 
       // Fetch Rules
@@ -113,6 +132,29 @@ export default function Settings() {
     } catch (err) {
       setTelegramError("Failed to send test message.");
     }
+  };
+
+  // F0-18: Save user-level chartVisibleMetrics
+  const handleSaveCharts = async () => {
+    setChartMsg(""); setChartError("");
+    const jwt = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ chartVisibleMetrics })
+      });
+      if (res.ok) setChartMsg("Chart preferences saved.");
+      else setChartError("Failed to save chart preferences.");
+    } catch (err) {
+      setChartError("An error occurred.");
+    }
+  };
+
+  const toggleChart = (m: ChartMetric) => {
+    setChartVisibleMetrics(prev =>
+      prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]
+    );
   };
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -300,10 +342,56 @@ export default function Settings() {
                   Test Ping
                 </button>
               </div>
-            </div>
-          </motion.div>
+             </div>
+           </motion.div>
 
-        </div>
+           {/* F0-18: User-level chart preferences */}
+           <motion.div
+             initial={{ opacity: 0, y: 10 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ delay: 0.15 }}
+             className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 shadow-sm"
+           >
+             <h2 className="text-lg font-bold text-text-primary mb-2 flex items-center gap-2">
+               <BarChart3 className="w-5 h-5 text-dataviz-blue" />
+               Default Dashboard Charts
+             </h2>
+             <p className="text-text-secondary text-sm mb-4">
+               Choose which metric cards to show by default on each VPS detail page. Per-VPS overrides in the VPS settings still win.
+             </p>
+
+             {chartError && <div className="mb-4 p-3 bg-status-error/10 border border-status-error/20 text-status-error text-sm rounded-xl flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5"/>{chartError}</div>}
+             {chartMsg && <div className="mb-4 p-3 bg-status-success/10 border border-status-success/20 text-status-success text-sm rounded-xl flex items-start gap-2"><CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5"/>{chartMsg}</div>}
+
+             <div className="grid grid-cols-2 gap-2 mb-4">
+               {CHART_METRICS.map(m => (
+                 <label
+                   key={m}
+                   className={`flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${
+                     chartVisibleMetrics.includes(m)
+                       ? 'bg-brand/10 border-brand/40 text-text-primary'
+                       : 'bg-neutral-bg1 border-border-DEFAULT text-text-muted hover:border-border-strong'
+                   }`}
+                 >
+                   <input
+                     type="checkbox"
+                     checked={chartVisibleMetrics.includes(m)}
+                     onChange={() => toggleChart(m)}
+                     className="w-4 h-4 rounded border-border-DEFAULT bg-neutral-bg1 text-brand focus:ring-brand cursor-pointer"
+                   />
+                   <span className="text-sm font-medium uppercase tracking-wider">{m}</span>
+                 </label>
+               ))}
+             </div>
+             <button
+               onClick={handleSaveCharts}
+               className="w-full p-2.5 bg-brand hover:bg-brand-hover text-white transition-colors font-medium rounded-xl"
+             >
+               Save Chart Preferences
+             </button>
+           </motion.div>
+
+         </div>
 
         {/* Right Column: Alerting Engine */}
         <div className="lg:col-span-7">
