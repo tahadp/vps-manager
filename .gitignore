@@ -58,3 +58,7 @@ protoc/
 # OpenCode skill sessions
 .opencode/
 
+# Test coverage outputs
+server/coverage/
+client/coverage/
+
