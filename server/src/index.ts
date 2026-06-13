@@ -22,7 +22,7 @@ if (!process.env.JWT_SECRET) {
 }
 
 app.use(cors({ 
-  origin: process.env.CORS_ORIGIN || true,  // true = reflect request origin
+  origin: true,  // reflect request origin (dynamic URLs like sslip.io)
   credentials: true 
 }));
 app.use(express.json());
