@@ -466,7 +466,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
         <div className="bg-neutral-bg1">
           {activeTab === 'overview' && (
             <div className="p-6 flex flex-col gap-4">
-              <ScreenView vpsId={id} imageData={screenshot} className="w-full h-56 bg-black/50 border border-border-subtle rounded-xl flex items-center justify-center overflow-hidden" />
+              <ScreenView vpsId={id} imageData={screenshot} isOffline={isOffline} className="w-full h-56 bg-black/50 border border-border-subtle rounded-xl flex items-center justify-center overflow-hidden" />
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-neutral-bg2/60 border border-border-subtle rounded-xl p-4">

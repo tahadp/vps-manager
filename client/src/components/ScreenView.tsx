@@ -1,14 +1,15 @@
 "use client";
 import React, { useState } from 'react';
-import { TerminalSquare, Maximize2, X } from 'lucide-react';
+import { TerminalSquare, Maximize2, X, WifiOff } from 'lucide-react';
 
 interface ScreenViewProps {
   vpsId: string;
   imageData?: string | null;
+  isOffline?: boolean;
   className?: string;
 }
 
-export default function ScreenView({ vpsId, imageData, className }: ScreenViewProps) {
+export default function ScreenView({ vpsId, imageData, isOffline, className }: ScreenViewProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -17,7 +18,13 @@ export default function ScreenView({ vpsId, imageData, className }: ScreenViewPr
         className={`relative cursor-pointer group overflow-hidden ${className || 'w-full h-36 bg-black/50 border-y border-border-subtle flex items-center justify-center'}`}
         onClick={() => imageData && setExpanded(true)}
       >
-        {imageData ? (
+        {isOffline ? (
+          <div className="flex flex-col items-center text-status-error/70 gap-2">
+            <WifiOff className="w-7 h-7" />
+            <span className="text-sm font-medium">Server is offline</span>
+            <span className="text-[10px] text-text-muted">Last screenshot will appear when server is back online</span>
+          </div>
+        ) : imageData ? (
           <React.Fragment key={imageData.slice(0, 32)}>
             <img
               src={`data:image/jpeg;base64,${imageData}`}
@@ -32,13 +39,12 @@ export default function ScreenView({ vpsId, imageData, className }: ScreenViewPr
           </React.Fragment>
         ) : (
           <div className="flex flex-col items-center text-text-muted/50 gap-2">
-            <TerminalSquare className="w-6 h-6" />
-            <span className="text-xs">No display signal</span>
+            <TerminalSquare className="w-6 h-6 animate-pulse" />
+            <span className="text-xs">Waiting for first screenshot…</span>
           </div>
         )}
       </div>
 
-      {/* Fullscreen overlay */}
       {expanded && imageData && (
         <div
           className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
