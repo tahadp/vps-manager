@@ -1,9 +1,9 @@
 import { Server } from 'socket.io';
 import http from 'http';
-import { redisSubscriber, redisCache } from './redis';
+import { redisSubscriber } from './redis';
 import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
-import { getAgentClient, clearAgentClient } from './grpcClient';
+import { openShellOnAgent, sendShellInput, closeShellOnAgent, getShellSession } from './agentCommands';
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -34,8 +34,7 @@ export const initWebSocket = (server: http.Server) => {
 
   io.on('connection', (socket: any) => {
     console.log('Client connected:', socket.id, 'User:', socket.data.user.email);
-    let ptyStream: any = null;
-    let connectedVpsId: string | null = null;
+    const activeSessions = new Map<string, string>();
 
     socket.on('subscribe_vps', async (vpsId: string) => {
       try {
@@ -53,7 +52,6 @@ export const initWebSocket = (server: http.Server) => {
       }
     });
 
-    // Generic list-level room for dashboard / inventory live updates
     socket.on('subscribe_vps_list', () => {
       socket.join('vps_list');
     });
@@ -62,73 +60,76 @@ export const initWebSocket = (server: http.Server) => {
       socket.leave('vps_list');
     });
 
-    socket.on('pty_connect', async (vpsId: string) => {
+    socket.on('shell:open', async (payload: { vpsId: string; sessionId?: string; shell?: string }) => {
       try {
         const user = socket.data.user;
+        const { vpsId, sessionId: clientSessionId, shell } = payload || {};
+        if (!vpsId) return socket.emit('shell:error', { error: 'vpsId required' });
         if (user.role !== 'ADMIN') {
           const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
-          if (!vps || vps.userId !== user.id) return socket.emit('pty_error', 'Unauthorized');
+          if (!vps || vps.userId !== user.id) return socket.emit('shell:error', { error: 'Unauthorized' });
         }
-
-        const agentClient = await getAgentClient(vpsId);
-        ptyStream = agentClient.ShellStream();
-        connectedVpsId = vpsId;
-
-        socket.emit('pty_connected');
-
-        ptyStream.on('data', (msg: any) => {
-          socket.emit('pty_output', msg.data.toString('utf-8'));
-        });
-
-        ptyStream.on('error', (err: any) => {
-          clearAgentClient(vpsId);
-          socket.emit('pty_error', err.message || 'Stream error');
-          socket.emit('pty_closed');
-        });
-
-        ptyStream.on('end', () => {
-          socket.emit('pty_output', '\r\n[Connection closed]\r\n');
-          socket.emit('pty_closed');
-        });
-
+        const session = await openShellOnAgent(vpsId, shell || (process.platform === 'win32' ? 'cmd.exe' : 'bash'));
+        activeSessions.set(session.sessionId, vpsId);
+        socket.join(`shell:${session.sessionId}`);
+        socket.emit('shell:opened', { sessionId: session.sessionId, vpsId });
       } catch (err: any) {
-        clearAgentClient(vpsId);
-        socket.emit('pty_error', err.message || 'Failed to start PTY');
-        socket.emit('pty_closed');
+        socket.emit('shell:error', { error: err?.message || 'Failed to open shell' });
       }
     });
 
-    socket.on('pty_input', (data: string) => {
-      if (ptyStream && connectedVpsId) {
-        ptyStream.write({ vps_id: connectedVpsId, data: Buffer.from(data, 'utf-8') });
+    socket.on('shell:input', (payload: { sessionId: string; data: string }) => {
+      if (!payload || !payload.sessionId) return;
+      const ok = sendShellInput(payload.sessionId, payload.data);
+      if (!ok) {
+        socket.emit('shell:error', { sessionId: payload.sessionId, error: 'Session not found' });
       }
+    });
+
+    socket.on('shell:close', async (payload: { sessionId: string }) => {
+      if (!payload || !payload.sessionId) return;
+      const sessionId = payload.sessionId;
+      await closeShellOnAgent(sessionId).catch(() => {});
+      activeSessions.delete(sessionId);
+      socket.leave(`shell:${sessionId}`);
+      socket.emit('shell:closed', { sessionId });
     });
 
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id);
-      if (ptyStream) {
-        ptyStream.end();
+      for (const sessionId of activeSessions.keys()) {
+        closeShellOnAgent(sessionId).catch(() => {});
       }
+      activeSessions.clear();
     });
   });
 
-  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', 'vps_event:*', (err: any, count: any) => {
+  redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', 'vps_event:*', 'shell:output:*', (err: any, count: any) => {
     if (err) console.error('Redis PSubscribe Error:', err);
   });
 
   redisSubscriber.on('pmessage', (pattern: any, channel: any, message: any) => {
-    const vpsId = channel.split(':')[1];
     if (pattern === 'telemetry:*') {
+      const vpsId = channel.split(':')[1];
       io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
     } else if (pattern === 'screenshot:*') {
+      const vpsId = channel.split(':')[1];
       io.to(`vps_${vpsId}`).emit('screenshot_update', JSON.parse(message));
     } else if (pattern === 'vps_status:*') {
+      const vpsId = channel.split(':')[1];
       const payload = JSON.parse(message);
       io.to(`vps_${vpsId}`).emit('vps_status_update', payload);
       io.to('vps_list').emit('vps_event', { type: 'STATUS_CHANGED', ...payload });
     } else if (pattern === 'vps_event:*') {
       const payload = JSON.parse(message);
       io.to('vps_list').emit('vps_event', payload);
+    } else if (pattern === 'shell:output:*') {
+      const sessionId = channel.split(':')[2];
+      const payload = JSON.parse(message);
+      io.to(`shell:${sessionId}`).emit('shell:output', {
+        sessionId,
+        data: Buffer.from(payload.data, 'base64').toString('utf-8')
+      });
     }
   });
 };

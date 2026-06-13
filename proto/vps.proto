@@ -5,23 +5,11 @@ package vps;
 option go_package = "./pb";
 
 service BackendService {
-  // Agent sends telemetry & screenshots to Server
   rpc StreamTelemetry (stream TelemetryRequest) returns (TelemetryResponse);
   rpc UploadScreenshot (ScreenshotRequest) returns (ScreenshotResponse);
-  
-  // Agent heartbeat for liveness detection
   rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
-}
 
-service AgentService {
-  // Server sends commands/requests to Agent
-  rpc ExecuteCommand (CommandRequest) returns (CommandResponse);
-  rpc ListDirectory (DirRequest) returns (DirResponse);
-  rpc ReadFile (FileRequest) returns (FileResponse);
-  rpc WriteFile (WriteRequest) returns (WriteResponse);
-  
-  // Interactive Shell / Web PTY
-  rpc ShellStream (stream ShellMessage) returns (stream ShellMessage);
+  rpc StreamAgentIO (stream AgentMessage) returns (stream ServerMessage);
 }
 
 message TelemetryRequest {
@@ -41,15 +29,71 @@ message TelemetryResponse {
   string message = 2;
 }
 
-message ShellMessage {
+message ScreenshotRequest {
   string vps_id = 1;
-  bytes data = 2; // Can contain stdin/stdout
+  bytes image_data = 2;
+}
+
+message ScreenshotResponse {
+  bool success = 1;
+}
+
+message HeartbeatRequest {
+  string vps_id = 1;
+  int64 timestamp = 2;
+  string agent_ip = 3;
+}
+
+message VpsSettingsMessage {
+  int32 screenshot_interval_sec = 1;
+  int32 telemetry_interval_sec = 2;
+  bool ram_disk_visible = 3;
+  bool network_visible = 4;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  VpsSettingsMessage settings = 2;
+}
+
+message ServerMessage {
+  string request_id = 1;
+  oneof body {
+    CommandRequest       exec         = 11;
+    DirRequest           listdir      = 12;
+    FileRequest          read         = 13;
+    WriteRequest         write        = 14;
+    ShellOpenRequest     shell_open   = 15;
+    ShellInputRequest    shell_input  = 16;
+    ShellCloseRequest    shell_close  = 17;
+    RefreshRequest       refresh      = 18;
+  }
+}
+
+message AgentMessage {
+  string request_id = 1;
+  oneof body {
+    RegisterRequest      register     = 10;
+    CommandResponse      exec_result  = 11;
+    DirResponse          listdir_result = 12;
+    FileResponse         read_result  = 13;
+    WriteResponse        write_result = 14;
+    ShellOpenedResponse  shell_opened = 15;
+    ShellOutput          shell_output = 16;
+    ShellClosedResponse  shell_closed = 17;
+    RefreshAck           refresh_ack  = 18;
+  }
+}
+
+message RegisterRequest {
+  string vps_id = 1;
+  string agent_ip = 2;
 }
 
 message CommandRequest {
   string vps_id = 1;
-  string command = 2; // e.g. "restart", "stop"
-  int32 timeout_seconds = 3; // Timeout in seconds (default 30)
+  string command = 2;
+  int32 timeout_seconds = 3;
 }
 
 message CommandResponse {
@@ -96,28 +140,40 @@ message WriteResponse {
   string error = 2;
 }
 
-message ScreenshotRequest {
+message ShellOpenRequest {
+  string session_id = 1;
+  string vps_id = 2;
+  string shell = 3;
+}
+
+message ShellOpenedResponse {
+  string session_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message ShellInputRequest {
+  string session_id = 1;
+  bytes data = 2;
+}
+
+message ShellOutput {
+  string session_id = 1;
+  bytes data = 2;
+}
+
+message ShellCloseRequest {
+  string session_id = 1;
+}
+
+message ShellClosedResponse {
+  string session_id = 1;
+}
+
+message RefreshRequest {
   string vps_id = 1;
-  bytes image_data = 2;
 }
 
-message ScreenshotResponse {
+message RefreshAck {
   bool success = 1;
-}
-
-message HeartbeatRequest {
-  string vps_id = 1;
-  int64 timestamp = 2;
-}
-
-message VpsSettingsMessage {
-  int32 screenshot_interval_sec = 1;
-  int32 telemetry_interval_sec = 2;
-  bool ram_disk_visible = 3;
-  bool network_visible = 4;
-}
-
-message HeartbeatResponse {
-  bool success = 1;
-  VpsSettingsMessage settings = 2;
 }

@@ -1,7 +1,7 @@
 import { redisSubscriber, redisCache, redisPublisher } from './redis';
 import axios from 'axios';
 import { prisma } from './prisma';
-import { executeCommand } from './grpcClient';
+import { execOnAgent } from './agentCommands';
 import { writeHistoricalMetric } from './metrics';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
@@ -241,13 +241,13 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
 
   if (shouldRunCustom) {
     try {
-      await executeCommand(vps.id, rule.customScript);
+      await execOnAgent(vps.id, rule.customScript);
     } catch (cmdErr) {
       console.error('Failed to execute custom script:', cmdErr);
     }
   } else if (shouldRestart) {
     try {
-      await executeCommand(vps.id, 'reboot');
+      await execOnAgent(vps.id, 'reboot');
     } catch (cmdErr) {
       console.error('Failed to execute restart:', cmdErr);
     }

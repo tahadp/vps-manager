@@ -19,6 +19,7 @@ const vpsPackage = protoDescriptor.vps;
 const server = new grpc.Server();
 
 import { prisma } from './prisma';
+import { registerAgentStream, unregisterAgentStream, resolveAgentResponse, handleShellOutput } from './agentDispatcher';
 
 const checkApiKey = async (call: any, callback?: any) => {
   const apiKey = call.metadata.get('x-api-key')[0];
@@ -72,7 +73,8 @@ server.addService(vpsPackage.BackendService.service, {
     if (!(await checkApiKey(call, callback))) return;
     try {
       const peer = call.getPeer();
-      const agentIp = peer.split(':')[0] || 'Unknown';
+      const peerIp = peer.split(':')[0] || 'Unknown';
+      const agentIp = (call.request && call.request.agent_ip) || peerIp;
       const now = new Date();
 
       await prisma.vps.update({
@@ -123,6 +125,87 @@ server.addService(vpsPackage.BackendService.service, {
       console.error('Heartbeat update failed:', err);
       callback(null, { success: false });
     }
+  },
+  StreamAgentIO: (call: any) => {
+    let boundVpsId: string | null = null;
+    let authChecked = false;
+    let authPromise: Promise<boolean> | null = null;
+
+    const ensureAuth = async (): Promise<boolean> => {
+      if (authChecked) return !!boundVpsId;
+      if (!authPromise) {
+        authPromise = (async () => {
+          const ok = await checkApiKey(call);
+          if (ok) {
+            boundVpsId = call.authenticatedVpsId;
+            authChecked = true;
+            return true;
+          }
+          return false;
+        })();
+      }
+      return authPromise;
+    };
+
+    call.on('data', async (msg: any) => {
+      try {
+        const ok = await ensureAuth();
+        if (!ok || !boundVpsId) {
+          call.end();
+          return;
+        }
+        if (!msg) return;
+        if (msg.body && msg.body.register) {
+          const req = msg.body.register;
+          if (req.agent_ip) {
+            await prisma.vps.update({
+              where: { id: boundVpsId },
+              data: { ipAddress: req.agent_ip }
+            }).catch((e) => console.error('Failed to update agent_ip:', e));
+          }
+          registerAgentStream(boundVpsId, call);
+          try {
+            call.write({
+              request_id: msg.request_id || '',
+              register: { success: true }
+            });
+          } catch (e) {
+            console.error('StreamAgentIO register write failed:', e);
+          }
+          return;
+        }
+        if (msg.body && msg.body.shell_output) {
+          const out = msg.body.shell_output;
+          const sessionId = out.session_id;
+          const data = out.data;
+          if (sessionId && data) {
+            const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            handleShellOutput(sessionId, buf);
+          }
+          return;
+        }
+        if (msg.body && (msg.body.shell_opened || msg.body.shell_closed)) {
+          return;
+        }
+        resolveAgentResponse(msg);
+      } catch (err) {
+        console.error('StreamAgentIO data handler error:', err);
+      }
+    });
+
+    call.on('end', () => {
+      if (boundVpsId) unregisterAgentStream(boundVpsId, call);
+      try { call.end(); } catch {}
+    });
+
+    call.on('error', (err: any) => {
+      if (boundVpsId) unregisterAgentStream(boundVpsId, call);
+      console.error('StreamAgentIO stream error:', err?.message || err);
+    });
+
+    call.on('cancelled', () => {
+      if (boundVpsId) unregisterAgentStream(boundVpsId, call);
+    });
   }
 });
 

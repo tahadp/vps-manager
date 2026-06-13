@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
-import { executeCommand, listDirectory, readFile, writeFile, refreshNow } from '../grpcClient';
+import { execOnAgent, listDirOnAgent, readFileFromAgent, writeFileToAgent, refreshAgent } from '../agentCommands';
 import { redisPublisher } from '../redis';
 import { OsType } from '@prisma/client';
 import { validate, validateQuery, validateParams, schemas } from '../middlewares/validation';
@@ -202,7 +202,7 @@ vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), valid
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await executeCommand(vpsId, command);
+    const result = await execOnAgent(vpsId, command);
     await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Executed: ${command}`);
     res.json(result);
   } catch (err: any) {
@@ -215,7 +215,7 @@ vpsRouter.post('/:id/refresh', requireAuth, validateParams(idParamSchema), async
   const vpsId = req.params.id as string;
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
   try {
-    const result = await refreshNow(vpsId);
+    const result = await refreshAgent(vpsId);
     await logAudit(req.user!.id, vpsId, 'REFRESH', 'Manual refresh requested');
     res.json({ ...result });
   } catch (err: any) {
@@ -233,8 +233,8 @@ vpsRouter.post('/bulk/refresh', requireAuth, validate(schemas.bulkCommand), asyn
       continue;
     }
     try {
-      const r = await refreshNow(vpsId);
-      results.push({ vpsId, success: true, data: r });
+      const r = await refreshAgent(vpsId);
+      results.push({ vpsId, success: r.success, data: r });
     } catch (err: any) {
       results.push({ vpsId, success: false, error: err.message });
     }
@@ -322,7 +322,7 @@ vpsRouter.post('/bulk/command', requireAuth, validate(schemas.bulkCommand), asyn
       continue;
     }
     try {
-      const resData = await executeCommand(vpsId, command);
+      const resData = await execOnAgent(vpsId, command);
       await logAudit(req.user!.id, vpsId, 'EXECUTE_COMMAND', `Bulk Executed: ${command}`);
       results.push({ vpsId, success: true, data: resData });
     } catch (err: any) {
@@ -339,7 +339,7 @@ vpsRouter.get('/:id/files', requireAuth, validateParams(idParamSchema), validate
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await listDirectory(vpsId, dirPath);
+    const result = await listDirOnAgent(vpsId, dirPath);
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -353,7 +353,7 @@ vpsRouter.get('/:id/file', requireAuth, validateParams(idParamSchema), validateQ
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await readFile(vpsId, filePath);
+    const result = await readFileFromAgent(vpsId, filePath);
     res.json({ success: true, content: result.content.toString('utf-8') });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -367,7 +367,7 @@ vpsRouter.put('/:id/file', requireAuth, validateParams(idParamSchema), validate(
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await writeFile(vpsId, filePath, Buffer.from(content, 'utf-8'));
+    const result = await writeFileToAgent(vpsId, filePath, Buffer.from(content, 'utf-8'));
     await logAudit(req.user!.id, vpsId, 'FILE_EDIT', `Edited file: ${filePath}`);
     res.json(result);
   } catch (err: any) {
@@ -383,7 +383,7 @@ vpsRouter.delete('/:id/files', requireAuth, validateParams(idParamSchema), async
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await executeCommand(vpsId, `rm -rf "${filePath}"`);
+    const result = await execOnAgent(vpsId, `rm -rf "${filePath}"`);
     await logAudit(req.user!.id, vpsId, 'FILE_DELETE', `Deleted: ${filePath}`);
     res.json(result);
   } catch (err: any) {
@@ -400,7 +400,7 @@ vpsRouter.post('/:id/files', requireAuth, validateParams(idParamSchema), async (
 
   try {
     const cmd = type === 'directory' ? `mkdir -p "${filePath}"` : `touch "${filePath}"`;
-    const result = await executeCommand(vpsId, cmd);
+    const result = await execOnAgent(vpsId, cmd);
     await logAudit(req.user!.id, vpsId, 'FILE_CREATE', `Created: ${filePath}`);
     res.json(result);
   } catch (err: any) {
@@ -416,7 +416,7 @@ vpsRouter.patch('/:id/files', requireAuth, validateParams(idParamSchema), async 
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await executeCommand(vpsId, `mv "${oldPath}" "${newPath}"`);
+    const result = await execOnAgent(vpsId, `mv "${oldPath}" "${newPath}"`);
     await logAudit(req.user!.id, vpsId, 'FILE_RENAME', `Renamed: ${oldPath} to ${newPath}`);
     res.json(result);
   } catch (err: any) {
@@ -432,7 +432,7 @@ vpsRouter.get('/:id/file/download', requireAuth, validateParams(idParamSchema), 
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await readFile(vpsId, filePath);
+    const result = await readFileFromAgent(vpsId, filePath);
     const fileName = filePath.split('/').pop() || 'file';
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Type', 'application/octet-stream');

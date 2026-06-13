@@ -15,6 +15,7 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
   const fitRef = useRef<any>(null);
   const socketRef = useRef<Socket | null>(null);
   const stateRef = useRef<ConnState>('idle');
+  const currentSessionIdRef = useRef<string | null>(null);
   const [state, setState] = useState<ConnState>('idle');
 
   useEffect(() => {
@@ -78,7 +79,7 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
 
       socket.on('connect', () => {
         writeStatus(xterm, 'Authenticating, requesting PTY…', 'gray');
-        socket?.emit('pty_connect', vpsId);
+        socket?.emit('shell:open', { vpsId });
       });
       socket.on('connect_error', (err: any) => {
         setStateAndRef('closed');
@@ -89,31 +90,36 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
         setStateAndRef('closed');
         writeStatus(xterm, `Disconnected: ${reason}`, 'yellow');
       });
-      socket.on('pty_connected', () => {
+      socket.on('shell:opened', (payload: { sessionId: string }) => {
+        currentSessionIdRef.current = payload?.sessionId || null;
         setStateAndRef('connected');
         try { xterm.clear(); } catch {}
       });
-      socket.on('pty_closed', () => {
+      socket.on('shell:closed', () => {
         setStateAndRef('closed');
         writeStatus(xterm, 'Connection closed by server.', 'yellow');
       });
-      socket.on('pty_output', (data: string) => {
-        try { xterm.write(data); } catch {}
+      socket.on('shell:output', (payload: { data: string }) => {
+        try { xterm.write(payload?.data || ''); } catch {}
       });
-      socket.on('pty_error', (err: string) => {
+      socket.on('shell:error', (payload: { error: string }) => {
         setStateAndRef('closed');
-        writeStatus(xterm, `Error: ${err}`, 'red');
+        writeStatus(xterm, `Error: ${payload?.error || 'unknown'}`, 'red');
       });
 
       xterm.onData((data: string) => {
-        if (socket?.connected && stateRef.current === 'connected') {
-          socket.emit('pty_input', data);
+        if (socket?.connected && stateRef.current === 'connected' && currentSessionIdRef.current) {
+          socket.emit('shell:input', { sessionId: currentSessionIdRef.current, data });
         }
       });
 
       (terminalRef.current as any).__cleanup = () => {
         clearTimeout(fitTimeout);
         resizeObserver.disconnect();
+        if (currentSessionIdRef.current && socket?.connected) {
+          socket.emit('shell:close', { sessionId: currentSessionIdRef.current });
+        }
+        currentSessionIdRef.current = null;
         socket?.disconnect();
         try { xterm.dispose(); } catch {}
         termRef.current = null;
