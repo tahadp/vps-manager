@@ -5,6 +5,7 @@ import {
   Folder, FileText, Save, ArrowUp, AlertCircle, Loader2,
   Trash2, Plus, Edit3, Download, Upload, FolderPlus, MoreVertical
 } from 'lucide-react';
+import { api } from '@/lib/api';
 
 const Editor = dynamic(() => import('@monaco-editor/react'), {
   ssr: false,
@@ -18,12 +19,6 @@ const Editor = dynamic(() => import('@monaco-editor/react'), {
 interface FileManagerProps {
   vpsId: string;
   className?: string;
-}
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
-function getAuthToken(): string {
-  return typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
 }
 
 const BINARY_EXTENSIONS = new Set([
@@ -85,21 +80,14 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     setLoadingFiles(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/vps/${vpsId}/files?path=${encodeURIComponent(path)}`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` }
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to list files (${res.status})`);
-      }
-      const data = await res.json();
+      const data = await api<any>(`/api/vps/${vpsId}/files?path=${encodeURIComponent(path)}`);
       if (data.success) {
         setFiles(data.files || []);
       } else {
         throw new Error(data.error || 'Failed to list files');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load directory');
+      setError(err?.message || 'Failed to load directory');
       setFiles([]);
     }
     setLoadingFiles(false);
@@ -114,14 +102,7 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     setLoadingContent(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/vps/${vpsId}/file?path=${encodeURIComponent(fullPath)}`, {
-        headers: { Authorization: `Bearer ${getAuthToken()}` }
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to read file (${res.status})`);
-      }
-      const data = await res.json();
+      const data = await api<any>(`/api/vps/${vpsId}/file?path=${encodeURIComponent(fullPath)}`);
       if (data.success) {
         setSelectedFile(fullPath);
         setFileContent(data.content);
@@ -129,7 +110,7 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
         throw new Error(data.error || 'Failed to read file');
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to read file');
+      setError(err?.message || 'Failed to read file');
     }
     setLoadingContent(false);
   };
@@ -139,20 +120,12 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/vps/${vpsId}/file`, {
+      await api(`/api/vps/${vpsId}/file`, {
         method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${getAuthToken()}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ path: selectedFile, content: fileContent })
+        json: { path: selectedFile, content: fileContent }
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || `Failed to save (${res.status})`);
-      }
     } catch (err: any) {
-      setError(err.message || 'Failed to save file');
+      setError(err?.message || 'Failed to save file');
     }
     setSaving(false);
   };
@@ -161,18 +134,14 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     const name = filePath.split('/').pop();
     if (!confirm(`Delete "${name}"${isDir ? ' and all its contents' : ''}?`)) return;
     try {
-      const res = await fetch(`${API_URL}/api/vps/${vpsId}/files?path=${encodeURIComponent(filePath)}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${getAuthToken()}` }
-      });
-      if (!res.ok) throw new Error('Failed to delete');
+      await api(`/api/vps/${vpsId}/files?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' });
       if (selectedFile === filePath) {
         setSelectedFile(null);
         setFileContent('');
       }
       fetchFiles(currentPath);
     } catch (err: any) {
-      setError(err.message || 'Failed to delete');
+      setError(err?.message || 'Failed to delete');
     }
   };
 
@@ -180,20 +149,15 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     if (!createName.trim() || !createModal) return;
     const fullPath = currentPath === '/' ? `/${createName}` : `${currentPath}/${createName}`;
     try {
-      const res = await fetch(`${API_URL}/api/vps/${vpsId}/files`, {
+      await api(`/api/vps/${vpsId}/files`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${getAuthToken()}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ path: fullPath, type: createModal.type })
+        json: { path: fullPath, type: createModal.type }
       });
-      if (!res.ok) throw new Error('Failed to create');
       setCreateModal(null);
       setCreateName('');
       fetchFiles(currentPath);
     } catch (err: any) {
-      setError(err.message || 'Failed to create');
+      setError(err?.message || 'Failed to create');
     }
   };
 
@@ -202,32 +166,27 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
     const parentDir = oldPath.split('/').slice(0, -1).join('/') || '/';
     const newPath = parentDir === '/' ? `/${renameValue}` : `${parentDir}/${renameValue}`;
     try {
-      const res = await fetch(`${API_URL}/api/vps/${vpsId}/files`, {
+      await api(`/api/vps/${vpsId}/files`, {
         method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${getAuthToken()}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ oldPath, newPath })
+        json: { oldPath, newPath }
       });
-      if (!res.ok) throw new Error('Failed to rename');
       if (selectedFile === oldPath) {
         setSelectedFile(newPath);
       }
       setRenaming(null);
       fetchFiles(currentPath);
     } catch (err: any) {
-      setError(err.message || 'Failed to rename');
+      setError(err?.message || 'Failed to rename');
     }
   };
 
   const downloadFile = (filePath: string) => {
-    const url = `${API_URL}/api/vps/${vpsId}/file/download?path=${encodeURIComponent(filePath)}`;
     const a = document.createElement('a');
-    a.href = url;
     a.download = filePath.split('/').pop() || 'file';
-    const token = getAuthToken();
-    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    const url = `${API_BASE}/api/vps/${vpsId}/file/download?path=${encodeURIComponent(filePath)}`;
+    a.href = url;
+    fetch(url, { credentials: 'include' })
       .then(res => res.blob())
       .then(blob => {
         const blobUrl = URL.createObjectURL(blob);
@@ -246,18 +205,13 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
       const content = reader.result as string;
       const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
       try {
-        const res = await fetch(`${API_URL}/api/vps/${vpsId}/file`, {
+        await api(`/api/vps/${vpsId}/file`, {
           method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${getAuthToken()}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ path: fullPath, content })
+          json: { path: fullPath, content }
         });
-        if (!res.ok) throw new Error('Failed to upload');
         fetchFiles(currentPath);
       } catch (err: any) {
-        setError(err.message || 'Failed to upload file');
+        setError(err?.message || 'Failed to upload file');
       }
     };
     reader.readAsText(file);

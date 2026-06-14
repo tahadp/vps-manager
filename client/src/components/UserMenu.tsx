@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Settings, LogOut, Mail, Calendar } from 'lucide-react';
+import { api, getStoredUser, setStoredUser } from '@/lib/api';
 
 export default function UserMenu() {
   const router = useRouter();
@@ -11,10 +12,7 @@ export default function UserMenu() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (stored) {
-      try { setUser(JSON.parse(stored)); } catch {}
-    }
+    setUser(getStoredUser());
   }, []);
 
   useEffect(() => {
@@ -25,9 +23,13 @@ export default function UserMenu() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      await api('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore — clear locally regardless
+    }
+    setStoredUser(null);
     window.location.href = '/login';
   };
 

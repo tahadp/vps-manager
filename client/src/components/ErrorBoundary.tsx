@@ -11,6 +11,11 @@ interface State {
   error: Error | null;
 }
 
+/**
+ * @deprecated Use the Next.js `error.tsx` route convention instead.
+ * This class component is kept for defense-in-depth wrapping in
+ * `app/layout.tsx` and may be removed in a future cleanup.
+ */
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);

@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
 import { Server, Search, TerminalSquare, ShieldAlert, LayoutDashboard, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { api, getStoredUser } from '@/lib/api';
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -26,15 +27,9 @@ export function CommandPalette() {
   // Fetch servers to populate the palette
   useEffect(() => {
     if (open && vpsList.length === 0) {
-      const token = localStorage.getItem("token");
-      if (token) {
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-          .then(res => res.json())
-          .then(data => {
-            if (Array.isArray(data)) setVpsList(data);
-          })
+      if (getStoredUser()) {
+        api<any[]>('/api/vps')
+          .then(data => { if (Array.isArray(data)) setVpsList(data); })
           .catch(() => {});
       }
     }
@@ -43,9 +38,10 @@ export function CommandPalette() {
   return (
     <AnimatePresence>
       {open && (
-        <Command.Dialog 
-          open={open} 
-          onOpenChange={setOpen} 
+        <Command.Dialog
+          open={open}
+          onOpenChange={setOpen}
+          label="Command palette"
           className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
         >
           <motion.div

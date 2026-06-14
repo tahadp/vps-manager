@@ -4,8 +4,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Check, X } from 'lucide-react';
 import { useSocket } from '@/lib/socket';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { api } from '@/lib/api';
 
 const TYPE_COLOR: Record<string, string> = {
   ALERT: 'text-status-warning',
@@ -24,13 +23,9 @@ export default function NotificationPanel() {
 
   const fetchItems = async () => {
     setLoading(true);
-    const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const d = await res.json();
-        setItems(d.items || []);
-      }
+      const d = await api<{ items?: any[] }>('/api/notifications');
+      setItems(d.items || []);
     } catch {}
     setLoading(false);
   };
@@ -57,8 +52,7 @@ export default function NotificationPanel() {
   }, []);
 
   const markRead = async () => {
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/api/notifications/mark-read`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    await api('/api/notifications/mark-read', { method: 'POST' });
     setItems([]);
   };
 

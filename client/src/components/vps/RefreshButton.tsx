@@ -1,6 +1,7 @@
 "use client";
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { api } from '@/lib/api';
 
 interface RefreshButtonProps {
   vpsId: string;
@@ -8,27 +9,16 @@ interface RefreshButtonProps {
   className?: string;
 }
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-
 export default function RefreshButton({ vpsId, onResult, className }: RefreshButtonProps) {
   const [loading, setLoading] = useState(false);
 
   const handleRefresh = async () => {
     setLoading(true);
-    const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/api/vps/${vpsId}/refresh`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        onResult?.(true, 'Refresh triggered — new screenshot and telemetry incoming');
-      } else {
-        const data = await res.json().catch(() => ({}));
-        onResult?.(false, data.error || 'Refresh failed');
-      }
+      await api(`/api/vps/${vpsId}/refresh`, { method: 'POST' });
+      onResult?.(true, 'Refresh triggered — new screenshot and telemetry incoming');
     } catch (err: any) {
-      onResult?.(false, err.message || 'Network error');
+      onResult?.(false, err?.message || 'Refresh failed');
     }
     setLoading(false);
     setTimeout(() => onResult?.(false, ''), 4000);
