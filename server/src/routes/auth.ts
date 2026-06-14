@@ -21,12 +21,16 @@ const DUMMY_BCRYPT_HASH = '$2b$10$CwTycUXWue0Thq9StjUM0uJ8.7q8Q3xVjCkjF7w6I0m0e6
 
 const isProd = process.env.NODE_ENV === 'production';
 
-const baseCookieOptions = {
-  httpOnly: true as const,
-  secure: isProd,
-  sameSite: 'strict' as const,
-  path: '/'
-};
+function getCookieOptions(req: any, maxAgeMs?: number) {
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  return {
+    httpOnly: true,
+    secure: isProd ? isSecure : false,
+    sameSite: 'lax' as const,
+    path: '/',
+    ...(maxAgeMs !== undefined ? { maxAge: maxAgeMs } : {})
+  };
+}
 
 function signToken(user: { id: string; role: string; email: string; tokenVersion: number }, rememberMe?: boolean): string {
   const expiresIn = rememberMe ? '30d' : ACCESS_TOKEN_TTL;
@@ -37,16 +41,16 @@ function signToken(user: { id: string; role: string; email: string; tokenVersion
   );
 }
 
-function setAuthCookie(res: any, token: string, rememberMe: boolean) {
+function setAuthCookie(req: any, res: any, token: string, rememberMe: boolean) {
   const maxAge = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-  res.cookie('auth-token', token, { ...baseCookieOptions, maxAge });
+  res.cookie('auth-token', token, getCookieOptions(req, maxAge));
 }
 
 function hashRefreshToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-async function issueRefreshToken(res: any, userId: string, rememberMe: boolean) {
+async function issueRefreshToken(req: any, res: any, userId: string, rememberMe: boolean) {
   if (!rememberMe) return;
   const raw = crypto.randomBytes(64).toString('hex');
   await prisma.refreshToken.create({
@@ -57,9 +61,8 @@ async function issueRefreshToken(res: any, userId: string, rememberMe: boolean) 
     }
   });
   res.cookie('refresh-token', raw, {
-    ...baseCookieOptions,
-    path: REFRESH_TOKEN_PATH,
-    maxAge: REFRESH_TOKEN_TTL_MS
+    ...getCookieOptions(req, REFRESH_TOKEN_TTL_MS),
+    path: REFRESH_TOKEN_PATH
   });
 }
 
@@ -72,11 +75,8 @@ authRouter.get('/csrf-token', (req, res) => {
   if (!token) {
     token = crypto.randomBytes(32).toString('hex');
     res.cookie('XSRF-TOKEN', token, {
-      httpOnly: false,
-      secure: isProd,
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 24 * 60 * 60 * 1000
+      ...getCookieOptions(req, 24 * 60 * 60 * 1000),
+      httpOnly: false
     });
   }
   res.json({ csrfToken: token });
@@ -146,8 +146,8 @@ authRouter.post('/login', validate(schemas.login), async (req, res) => {
     }
 
     const token = signToken(user, !!rememberMe);
-    setAuthCookie(res, token, !!rememberMe);
-    await issueRefreshToken(res, user.id, !!rememberMe);
+    setAuthCookie(req, res, token, !!rememberMe);
+    await issueRefreshToken(req, res, user.id, !!rememberMe);
 
     await prisma.user.update({
       where: { id: user.id },
@@ -192,13 +192,12 @@ authRouter.post('/refresh', async (req, res) => {
       }
     });
     res.cookie('refresh-token', newRaw, {
-      ...baseCookieOptions,
-      path: REFRESH_TOKEN_PATH,
-      maxAge: REFRESH_TOKEN_TTL_MS
+      ...getCookieOptions(req, REFRESH_TOKEN_TTL_MS),
+      path: REFRESH_TOKEN_PATH
     });
 
     const accessToken = signToken(stored.user, rememberMe);
-    setAuthCookie(res, accessToken, rememberMe);
+    setAuthCookie(req, res, accessToken, rememberMe);
     res.json({ success: true });
   } catch (error) {
     (req as any).log?.error({ err: error }, 'Token refresh failed with internal error');
@@ -207,9 +206,10 @@ authRouter.post('/refresh', async (req, res) => {
 });
 
 authRouter.post('/logout', (req, res) => {
-  res.clearCookie('auth-token', { path: '/' });
-  res.clearCookie('XSRF-TOKEN', { path: '/' });
-  res.clearCookie('refresh-token', { path: REFRESH_TOKEN_PATH });
+  const clearOpts = getCookieOptions(req);
+  res.clearCookie('auth-token', clearOpts);
+  res.clearCookie('XSRF-TOKEN', { ...clearOpts, httpOnly: false });
+  res.clearCookie('refresh-token', { ...clearOpts, path: REFRESH_TOKEN_PATH });
   res.json({ success: true });
 });
 
@@ -227,9 +227,10 @@ authRouter.post('/logout-all', requireAuth, async (req: AuthRequest, res) => {
       })
     ]);
     await logAudit({ userId, action: 'LOGOUT_ALL', target: userId });
-    res.clearCookie('auth-token', { path: '/' });
-    res.clearCookie('XSRF-TOKEN', { path: '/' });
-    res.clearCookie('refresh-token', { path: REFRESH_TOKEN_PATH });
+    const clearOpts = getCookieOptions(req);
+    res.clearCookie('auth-token', clearOpts);
+    res.clearCookie('XSRF-TOKEN', { ...clearOpts, httpOnly: false });
+    res.clearCookie('refresh-token', { ...clearOpts, path: REFRESH_TOKEN_PATH });
     res.json({ success: true });
   } catch (error) {
     (req as any).log?.error({ err: error }, 'Logout all failed with internal error');
@@ -272,7 +273,7 @@ authRouter.post('/change-password', requireAuth, validate(schemas.changePassword
     });
 
     const token = signToken(updated);
-    setAuthCookie(res, token, false);
+    setAuthCookie(req, res, token, false);
 
     await logAudit({ userId, action: 'PASSWORD_CHANGE', target: userId });
 
