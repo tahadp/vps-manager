@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
 import { redisCache } from '../redis';
+import { logger } from '../logger';
 
 interface RateLimitOptions {
   windowMs: number;
@@ -62,7 +63,7 @@ export function rateLimit(options: RateLimitOptions) {
 
       return next();
     } catch (err) {
-      console.error('Rate limiter Redis error:', (err as Error).message);
+      logger.error({ err: (err as Error).message }, 'Rate limiter Redis error');
       return next();
     }
   };

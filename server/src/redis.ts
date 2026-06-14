@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import dotenv from 'dotenv';
+import { logger } from './logger';
 dotenv.config({ path: '../.env' });
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
@@ -28,37 +29,37 @@ export const redisCache = new Redis(redisOptions);
 
 // Graceful error handling
 redisPublisher.on('error', (err) => {
-  console.error('Redis Publisher Error:', err.message);
+  logger.error({ err: err.message }, 'Redis Publisher Error');
 });
 
 redisSubscriber.on('error', (err) => {
-  console.error('Redis Subscriber Error:', err.message);
+  logger.error({ err: err.message }, 'Redis Subscriber Error');
 });
 
 redisCache.on('error', (err) => {
-  console.error('Redis Cache Error:', err.message);
+  logger.error({ err: err.message }, 'Redis Cache Error');
 });
 
 process.on('unhandledRejection', (reason) => {
   if (reason && (reason as any).message && String((reason as any).message).includes('Redis')) {
-    console.error('Suppressed Redis unhandledRejection');
+    logger.warn('Suppressed Redis unhandledRejection');
     return;
   }
-  console.error('Unhandled Rejection:', reason);
+  logger.error({ reason }, 'Unhandled Rejection');
 });
 
-redisPublisher.on('connect', () => console.log('Redis Publisher connected'));
-redisSubscriber.on('connect', () => console.log('Redis Subscriber connected'));
-redisCache.on('connect', () => console.log('Redis Cache connected'));
+redisPublisher.on('connect', () => logger.info('Redis Publisher connected'));
+redisSubscriber.on('connect', () => logger.info('Redis Subscriber connected'));
+redisCache.on('connect', () => logger.info('Redis Cache connected'));
 
 redisPublisher.on('reconnecting', (delay: number) => {
-  console.log(`Redis Publisher reconnecting in ${delay}ms...`);
+  logger.info({ delay }, 'Redis Publisher reconnecting');
 });
 
 redisSubscriber.on('reconnecting', (delay: number) => {
-  console.log(`Redis Subscriber reconnecting in ${delay}ms...`);
+  logger.info({ delay }, 'Redis Subscriber reconnecting');
 });
 
 redisCache.on('reconnecting', (delay: number) => {
-  console.log(`Redis Cache reconnecting in ${delay}ms...`);
+  logger.info({ delay }, 'Redis Cache reconnecting');
 });

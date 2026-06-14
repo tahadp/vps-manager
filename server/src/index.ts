@@ -46,6 +46,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+app.use((req, _res, next) => {
+  (req as any).id = randomUUID();
+  (req as any).log = logger.child({ reqId: (req as any).id });
+  next();
+});
+
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false,

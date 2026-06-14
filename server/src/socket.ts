@@ -4,6 +4,7 @@ import { redisSubscriber } from './redis';
 import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
 import { openShellOnAgent, sendShellInput, closeShellOnAgent, getShellSession } from './agentCommands';
+import { logger } from './logger';
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -37,7 +38,7 @@ export const initWebSocket = (server: http.Server) => {
   });
 
   io.on('connection', (socket: any) => {
-    console.log('Client connected:', socket.id, 'User:', socket.data.user.email);
+    logger.info({ socketId: socket.id, user: socket.data.user?.email }, 'Client connected');
 
     // Per-user room for live notification push (F0-2)
     if (socket.data.user?.id) {
@@ -56,9 +57,9 @@ export const initWebSocket = (server: http.Server) => {
           }
         }
         socket.join(`vps_${vpsId}`);
-        console.log(`Socket ${socket.id} joined room vps_${vpsId}`);
+        logger.info({ socketId: socket.id, vpsId }, 'Socket joined room');
       } catch (err) {
-        console.error(err);
+        logger.error({ err, socketId: socket.id, vpsId }, 'subscribe_vps error');
       }
     });
 
@@ -106,7 +107,7 @@ export const initWebSocket = (server: http.Server) => {
     });
 
     socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
+      logger.info({ socketId: socket.id }, 'Client disconnected');
       for (const sessionId of activeSessions.keys()) {
         closeShellOnAgent(sessionId).catch(() => {});
       }
@@ -115,7 +116,7 @@ export const initWebSocket = (server: http.Server) => {
   });
 
   redisSubscriber.psubscribe('telemetry:*', 'screenshot:*', 'vps_status:*', 'vps_event:*', 'shell:output:*', 'notifications:user:*', (err: any, count: any) => {
-    if (err) console.error('Redis PSubscribe Error:', err);
+    if (err) logger.error({ err }, 'Redis PSubscribe Error');
   });
 
   redisSubscriber.on('pmessage', (pattern: any, channel: any, message: any) => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { logger } from './logger';
 
 type ServerWritableStream = any;
 
@@ -45,7 +46,7 @@ export function registerAgentStream(vpsId: string, stream: ServerWritableStream)
     try { previous.end(); } catch {}
   }
   streamMap.set(vpsId, stream);
-  console.log(`[agentIO] stream registered for vps=${vpsId} (total=${streamMap.size})`);
+  logger.info({ vpsId, total: streamMap.size }, '[agentIO] stream registered');
 }
 
 export function unregisterAgentStream(vpsId: string, stream: ServerWritableStream) {
@@ -53,7 +54,7 @@ export function unregisterAgentStream(vpsId: string, stream: ServerWritableStrea
     streamMap.delete(vpsId);
     heartbeatMap.delete(vpsId);
     rejectAllForVps(vpsId, 'Agent stream disconnected');
-    console.log(`[agentIO] stream unregistered for vps=${vpsId} (total=${streamMap.size})`);
+    logger.info({ vpsId, total: streamMap.size }, '[agentIO] stream unregistered');
   }
 }
 
@@ -68,7 +69,7 @@ export function sendToAgent(vpsId: string, serverMessage: any): boolean {
     stream.write(serverMessage);
     return true;
   } catch (err) {
-    console.error(`[agentIO] write failed for vps=${vpsId}:`, err);
+    logger.error({ err, vpsId }, '[agentIO] write failed');
     unregisterAgentStream(vpsId, stream);
     return false;
   }
@@ -116,7 +117,7 @@ export function resolveAgentResponse(msg: any) {
     if (msg.body && (msg.body.shell_output || msg.body.shell_opened || msg.body.shell_closed)) {
       return;
     }
-    console.warn(`[agentIO] no pending request for id=${msg.request_id}`);
+    logger.warn({ requestId: msg.request_id }, '[agentIO] no pending request');
     return;
   }
   clearTimeout(pending.timer);
@@ -139,6 +140,6 @@ export function onShellOutput(handler: ShellOutputHandler): () => void {
 export function handleShellOutput(sessionId: string, data: Uint8Array | Buffer) {
   const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
   for (const h of shellHandlers) {
-    try { h(sessionId, buf); } catch (err) { console.error('[agentIO] shell handler error:', err); }
+    try { h(sessionId, buf); } catch (err) { logger.error({ err, sessionId }, '[agentIO] shell handler error'); }
   }
 }

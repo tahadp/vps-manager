@@ -2,6 +2,7 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 import { redisPublisher, redisCache } from './redis';
+import { logger } from './logger';
 
 const PROTO_PATH = path.join(__dirname, '../proto/vps.proto');
 
@@ -117,7 +118,7 @@ server.addService(vpsPackage.BackendService.service, {
           networkVisible: settings.networkVisible
         };
       } catch (settingsErr) {
-        console.error('Settings load failed (using defaults):', settingsErr);
+        logger.error({ err: settingsErr }, 'Settings load failed (using defaults)');
       }
 
       recordHeartbeat(call.authenticatedVpsId);
@@ -135,7 +136,7 @@ server.addService(vpsPackage.BackendService.service, {
         callback(null, { success: true });
       }
     } catch (err) {
-      console.error('Heartbeat update failed:', err);
+      logger.error({ err }, 'Heartbeat update failed');
       callback(null, { success: false });
     }
   },
@@ -174,7 +175,7 @@ server.addService(vpsPackage.BackendService.service, {
             await prisma.vps.update({
               where: { id: boundVpsId },
               data: { ipAddress: req.agent_ip }
-            }).catch((e) => console.error('Failed to update agent_ip:', e));
+            }).catch((e) => logger.error({ err: e, vpsId: boundVpsId }, 'Failed to update agent_ip'));
           }
           registerAgentStream(boundVpsId, call);
           try {
@@ -183,7 +184,7 @@ server.addService(vpsPackage.BackendService.service, {
               register: { success: true }
             });
           } catch (e) {
-            console.error('StreamAgentIO register write failed:', e);
+            logger.error({ err: e, vpsId: boundVpsId }, 'StreamAgentIO register write failed');
           }
           return;
         }
@@ -202,7 +203,7 @@ server.addService(vpsPackage.BackendService.service, {
         }
         resolveAgentResponse(msg);
       } catch (err) {
-        console.error('StreamAgentIO data handler error:', err);
+        logger.error({ err, vpsId: boundVpsId }, 'StreamAgentIO data handler error');
       }
     });
 
@@ -213,7 +214,7 @@ server.addService(vpsPackage.BackendService.service, {
 
     call.on('error', (err: any) => {
       if (boundVpsId) unregisterAgentStream(boundVpsId, call);
-      console.error('StreamAgentIO stream error:', err?.message || err);
+      logger.error({ err: err?.message || err, vpsId: boundVpsId }, 'StreamAgentIO stream error');
     });
 
     call.on('cancelled', () => {
@@ -229,10 +230,10 @@ export const startGrpcServer = () => {
     grpc.ServerCredentials.createInsecure(),
     (error, port) => {
       if (error) {
-        console.error('Failed to start gRPC server:', error);
+        logger.error({ err: error }, 'Failed to start gRPC server');
         return;
       }
-      console.log(`gRPC Server is running on port ${port}`);
+      logger.info({ port }, 'gRPC Server is running');
     }
   );
 };

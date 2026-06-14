@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { redisCache } from './redis';
+import { logger } from './logger';
 
 const FIFTEEN_SECONDS_MS = 15_000;
 const RETENTION_HOURS = 24;
@@ -47,11 +48,11 @@ export const writeHistoricalMetric = async (payload: {
     } catch (dbErr) {
       // Release the slot so the next attempt can write
       await redisCache.del(key).catch(() => {});
-      console.error('writeHistoricalMetric DB write failed:', dbErr);
+      logger.error({ err: dbErr, vpsId: payload.vpsId }, 'writeHistoricalMetric DB write failed');
       return false;
     }
   } catch (err) {
-    console.error('writeHistoricalMetric failed:', err);
+    logger.error({ err, vpsId: payload.vpsId }, 'writeHistoricalMetric failed');
     return false;
   }
 };
@@ -67,11 +68,11 @@ export const pruneOldMetrics = async (): Promise<number> => {
       where: { timestamp: { lt: cutoff } }
     });
     if (result.count > 0) {
-      console.log(`pruneOldMetrics: deleted ${result.count} rows older than ${RETENTION_HOURS}h`);
+      logger.info({ deleted: result.count, retentionHours: RETENTION_HOURS }, 'pruneOldMetrics: deleted old rows');
     }
     return result.count;
   } catch (err) {
-    console.error('pruneOldMetrics failed:', err);
+    logger.error({ err }, 'pruneOldMetrics failed');
     return 0;
   }
 };

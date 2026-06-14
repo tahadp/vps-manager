@@ -4,6 +4,7 @@ import { prisma } from './prisma';
 import { execOnAgent } from './agentCommands';
 import { writeHistoricalMetric } from './metrics';
 import { io } from './socket';
+import { logger } from './logger';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
@@ -15,7 +16,7 @@ export const sendTelegramAlert = async (userId: string, message: string) => {
       text: message,
     });
   } catch (error) {
-    console.error('Telegram notification failed for user', userId);
+    logger.error({ err: error, userId }, 'Telegram notification failed for user');
   }
 };
 
@@ -36,7 +37,7 @@ export const pushNotification = async (userId: string, notification: {
     // Also emit directly if io is already initialized in this process.
     io?.to(`user:${userId}`).emit('notification', notification);
   } catch (err) {
-    console.error('pushNotification failed:', err);
+    logger.error({ err }, 'pushNotification failed');
   }
 };
 
@@ -46,7 +47,7 @@ const refreshRules = async () => {
   try {
     activeRules = await prisma.alertRule.findMany();
   } catch (err) {
-    console.error('Failed to refresh alert rules', err);
+    logger.error({ err }, 'Failed to refresh alert rules');
   }
 };
 
@@ -149,7 +150,7 @@ export const initAlertingEngine = () => {
         });
       }
     } catch (err) {
-      console.error('Offline detection error:', err);
+      logger.error({ err }, 'Offline detection error');
     }
   }, 30000);
   
@@ -233,7 +234,7 @@ export const initAlertingEngine = () => {
           }
         }
       } catch (err) {
-        console.error('Error parsing telemetry for alerting', err);
+        logger.error({ err }, 'Error parsing telemetry for alerting');
       }
     }
   });
@@ -280,13 +281,13 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
   if (shouldRunCustom) {
     // F0-13: ALLOW_CUSTOM_SCRIPTS safety gate + per-rule timeout
     if (process.env.ALLOW_CUSTOM_SCRIPTS !== 'true') {
-      console.warn(`[alert] Custom script blocked (ALLOW_CUSTOM_SCRIPTS!=true) for vps=${vps.id} rule=${rule.id}`);
+      logger.warn({ vpsId: vps.id, ruleId: rule.id }, '[alert] Custom script blocked (ALLOW_CUSTOM_SCRIPTS!=true)');
     } else {
       try {
         const timeout = rule.timeoutSeconds ?? 30;
         await execOnAgent(vps.id, rule.customScript, timeout);
       } catch (cmdErr) {
-        console.error('Failed to execute custom script:', cmdErr);
+        logger.error({ err: cmdErr, vpsId: vps.id, ruleId: rule.id }, 'Failed to execute custom script');
       }
     }
   } else if (shouldRestart) {
@@ -295,7 +296,7 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
     try {
       await execOnAgent(vps.id, cmd);
     } catch (cmdErr) {
-      console.error('Failed to execute restart:', cmdErr);
+      logger.error({ err: cmdErr, vpsId: vps.id }, 'Failed to execute restart');
     }
   }
 };
