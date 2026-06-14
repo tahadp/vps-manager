@@ -18,6 +18,7 @@ model User {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   lastLogin DateTime?
+  tokenVersion Int     @default(0) // F2-1: bumps to invalidate all outstanding tokens/cookies
 
   telegramBotToken String?
   telegramChatId   String?
@@ -25,9 +26,10 @@ model User {
   dashboardVpsOrder   String? // JSON array of VPS IDs (user-level drag/drop order)
   chartVisibleMetrics String? // JSON array of metric keys (cpu|ram|disk|network)
 
-  vpsList    Vps[]
-  auditLogs  AuditLog[]
-  alertRules AlertRule[]
+  vpsList        Vps[]
+  auditLogs      AuditLog[]
+  alertRules     AlertRule[]
+  refreshTokens  RefreshToken[]
 }
 
 model Vps {
@@ -123,6 +125,7 @@ model AlertRule {
   action              String // "ALERT", "RESTART", "CUSTOM_SCRIPT", "ALERT_AND_RESTART"
   restartOnAlert      Boolean  @default(false)
   customScript        String?
+  timeoutSeconds      Int?     @default(30) // F0-13: per-rule custom script timeout (1-3600s)
   createdAt           DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -144,4 +147,17 @@ model HistoricalMetric {
   timestamp DateTime @default(now())
 
   @@index([vpsId, timestamp])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
