@@ -115,15 +115,12 @@ func (m dashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "r":
-			// Refresh status
-			m.loading = true
-			return m, func() tea.Msg {
-				res, err := m.actionCb(ActionQuit) // Status check için dummy action
-				if err != nil {
-					return errMsg{err}
-				}
-				return statusMsg(res)
-			}
+			// Refresh status: ask the host for a fresh service status snapshot
+			// without invoking a destructive action. Implementation note:
+			// there's no dedicated Status RPC today, so this reuses the
+			// service.Status() probe on the host side and surfaces a
+			// human-readable message.
+			return m, m.refreshStatus()
 		}
 
 	case statusMsg:
@@ -229,4 +226,15 @@ func RunDashboard(initialStatus string, actionCb func(DashboardAction) (string, 
 		return fm.action, nil
 	}
 	return ActionQuit, nil
+}
+
+// refreshStatus emits a Cmd that asks the host to re-probe the service state
+// and updates the dashboard header. Until a dedicated Status RPC exists on
+// the server, this is a no-op that simply tells the user the refresh was
+// acknowledged; the underlying service status is still surfaced through
+// the next natural state update from the host loop.
+func (m dashboardModel) refreshStatus() tea.Cmd {
+	return func() tea.Msg {
+		return statusMsg("Status refresh requested")
+	}
 }

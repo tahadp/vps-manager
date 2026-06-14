@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -14,11 +15,15 @@ func main() {
 	cfg, err := LoadConfig()
 	if err != nil || cfg.VpsID == "" {
 		// If no config, run wizard
-		res, err := tui.RunWizard()
-		if err != nil {
-			log.Fatalf("Wizard failed: %v", err)
+		res, werr := tui.RunWizard()
+		if werr != nil {
+			if errors.Is(werr, tui.ErrWizardCanceled) {
+				log.Println("Wizard canceled by user. Exiting cleanly.")
+				return
+			}
+			log.Fatalf("Wizard failed: %v", werr)
 		}
-		
+
 		cfg = &Config{
 			VpsID:     res.VpsID,
 			BackendIP: res.BackendIP,

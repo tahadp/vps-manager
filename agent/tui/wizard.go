@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -9,6 +10,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// ErrWizardCanceled is returned by RunWizard when the user dismisses the
+// form with Esc/Ctrl+C. Callers should distinguish a deliberate cancel
+// from a real error and exit cleanly without logging as a failure.
+var ErrWizardCanceled = errors.New("wizard canceled by user")
 
 type WizardResult struct {
 	VpsID     string
@@ -234,7 +240,7 @@ func RunWizard() (*WizardResult, error) {
 
 	if fm, ok := finalModel.(wizardModel); ok {
 		if fm.result.Canceled {
-			return nil, fmt.Errorf("wizard canceled")
+			return nil, ErrWizardCanceled
 		}
 		return fm.result, nil
 	}

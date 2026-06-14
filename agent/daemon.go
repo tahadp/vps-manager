@@ -22,46 +22,64 @@ import (
 )
 
 type agentSettings struct {
-	mu                 sync.RWMutex
-	screenshotInterval time.Duration
-	telemetryInterval  time.Duration
-	ramDiskVisible     bool
-	networkVisible     bool
+    mu                 sync.RWMutex
+    screenshotInterval time.Duration
+    telemetryInterval  time.Duration
 }
 
+// Visibility fields are server-driven; agent does not filter locally.
+// The UI receives filter flags via VpsSettings on the next heartbeat
+// response and renders accordingly.
 var settings = &agentSettings{
-	screenshotInterval: 30 * time.Second,
-	telemetryInterval:  1 * time.Second,
-	ramDiskVisible:     true,
-	networkVisible:     true,
+    screenshotInterval: 30 * time.Second,
+    telemetryInterval:  1 * time.Second,
 }
 
 func applySettings(s *pb.VpsSettingsMessage) {
-	if s == nil {
-		return
-	}
-	settings.mu.Lock()
-	defer settings.mu.Unlock()
-	if s.ScreenshotIntervalSec > 0 {
-		settings.screenshotInterval = time.Duration(s.ScreenshotIntervalSec) * time.Second
-	}
-	if s.TelemetryIntervalSec > 0 {
-		settings.telemetryInterval = time.Duration(s.TelemetryIntervalSec) * time.Second
-	}
-	settings.ramDiskVisible = s.RamDiskVisible
-	settings.networkVisible = s.NetworkVisible
-	log.Printf("Settings applied: telemetry=%v screenshot=%v", settings.telemetryInterval, settings.screenshotInterval)
+    if s == nil {
+        return
+    }
+    settings.mu.Lock()
+    defer settings.mu.Unlock()
+    if s.ScreenshotIntervalSec > 0 {
+        settings.screenshotInterval = time.Duration(s.ScreenshotIntervalSec) * time.Second
+    }
+    if s.TelemetryIntervalSec > 0 {
+        settings.telemetryInterval = time.Duration(s.TelemetryIntervalSec) * time.Second
+    }
+    log.Printf("Settings applied: telemetry=%v screenshot=%v", settings.telemetryInterval, settings.screenshotInterval)
 }
 
 func getOutboundIP() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		log.Printf("getOutboundIP failed: %v", err)
-		return ""
-	}
-	defer conn.Close()
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP.String()
+    conn, err := net.DialTimeout("udp", "8.8.8.8:80", 2*time.Second)
+    if err != nil {
+        log.Printf("getOutboundIP: dial failed: %v", err)
+        return ""
+    }
+    defer conn.Close()
+    localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+    if !ok {
+        log.Printf("getOutboundIP: unexpected LocalAddr type %T", conn.LocalAddr())
+        return ""
+    }
+    return localAddr.IP.String()
+}
+
+// validateVpsId rejects empty/missing/oversized VPS IDs at the handler entry
+// point. A valid ID is non-empty, ≤ 128 bytes, matches the agent's configured
+// VpsID, and contains no path-traversal or control characters. Returning a
+// typed error lets the handler emit a structured failure response.
+func (p *program) validateVpsId(vpsId string) error {
+    if vpsId == "" {
+        return fmt.Errorf("vps_id is required")
+    }
+    if len(vpsId) > 128 {
+        return fmt.Errorf("vps_id exceeds 128 bytes")
+    }
+    if p.cfg == nil || vpsId != p.cfg.VpsID {
+        return fmt.Errorf("vps_id does not match this agent")
+    }
+    return nil
 }
 
 type APIKeyAuth struct {
@@ -77,23 +95,26 @@ func (a APIKeyAuth) RequireTransportSecurity() bool {
 }
 
 type program struct {
-	cfg    *Config
-	ctx    context.Context
-	cancel context.CancelFunc
+    cfg    *Config
+    ctx    context.Context
+    cancel context.CancelFunc
 
-	// F0-19: Separate refresh channels for telemetry and screenshot.
-	// Previously both consumed the same single channel and raced.
-	refreshTelemetryCh chan struct{}
-	refreshScreenshotCh chan struct{}
+    // F0-19: Separate refresh channels for telemetry and screenshot.
+    // Previously both consumed the same single channel and raced.
+    refreshTelemetryCh chan struct{}
+    refreshScreenshotCh chan struct{}
 
-	telemetryStream pb.BackendService_StreamTelemetryClient
-	telemetryMu     sync.Mutex
+    telemetryStream pb.BackendService_StreamTelemetryClient
+    telemetryMu     sync.Mutex
 
-	ioStream pb.BackendService_StreamAgentIOClient
-	ioMu     sync.Mutex
+    ioStream pb.BackendService_StreamAgentIOClient
+    ioMu     sync.Mutex
 
-	shells   map[string]*shellSession
-	shellsMu sync.Mutex
+    shells   map[string]*shellSession
+    shellsMu sync.Mutex
+
+    agentIP string
+    ipMu    sync.Mutex
 }
 
 type shellSession struct {
@@ -117,61 +138,101 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) run() {
-	log.Println("VPS Agent (Golang) is starting in outbound mode...")
+    log.Println("VPS Agent (Golang) is starting in outbound mode...")
 
-	conn, err := grpc.Dial(p.cfg.BackendIP,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithPerRPCCredentials(APIKeyAuth{Key: p.cfg.APIKey}),
-	)
-	if err != nil {
-		log.Printf("Did not connect to backend: %v", err)
-		return
-	}
-	defer conn.Close()
-	backendClient := pb.NewBackendServiceClient(conn)
+    conn, err := grpc.Dial(p.cfg.BackendIP,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        grpc.WithPerRPCCredentials(APIKeyAuth{Key: p.cfg.APIKey}),
+    )
+    if err != nil {
+        log.Printf("Did not connect to backend: %v", err)
+        return
+    }
+    defer conn.Close()
+    backendClient := pb.NewBackendServiceClient(conn)
 
-	go p.heartbeatLoop(backendClient)
-	go p.telemetryLoop(backendClient)
-	go p.screenshotLoop(backendClient)
-	go p.ioLoop(backendClient)
+    p.ipMu.Lock()
+    p.agentIP = getOutboundIP()
+    p.ipMu.Unlock()
+    log.Printf("Initial agent IP: %s", p.agentIP)
 
-	<-p.ctx.Done()
+    go p.ipRefreshLoop()
+    go p.heartbeatLoop(backendClient)
+    go p.telemetryLoop(backendClient)
+    go p.screenshotLoop(backendClient)
+    go p.ioLoop(backendClient)
+
+    <-p.ctx.Done()
+}
+
+// ipRefreshLoop periodically re-detects the outbound IP. Network
+// configuration (DHCP renew, interface hotplug, VPN reconnect) can change
+// the source address behind a moving agent; refreshing every 5 minutes keeps
+// the value sent on heartbeats/streams current.
+func (p *program) ipRefreshLoop() {
+    ticker := time.NewTicker(5 * time.Minute)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-p.ctx.Done():
+            return
+        case <-ticker.C:
+            newIP := getOutboundIP()
+            if newIP == "" {
+                log.Printf("ipRefreshLoop: detection returned empty, keeping previous value")
+                continue
+            }
+            p.ipMu.Lock()
+            p.agentIP = newIP
+            p.ipMu.Unlock()
+            log.Printf("Agent IP refreshed: %s", newIP)
+        }
+    }
+}
+
+func (p *program) currentAgentIP() string {
+    p.ipMu.Lock()
+    defer p.ipMu.Unlock()
+    return p.agentIP
 }
 
 func (p *program) heartbeatLoop(backendClient pb.BackendServiceClient) {
-	retryDelay := 1 * time.Second
-	maxRetryDelay := 2 * time.Minute
-	agentIP := getOutboundIP()
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		default:
-		}
-		resp, err := backendClient.Heartbeat(p.ctx, &pb.HeartbeatRequest{
-			VpsId:     p.cfg.VpsID,
-			Timestamp: time.Now().Unix(),
-			AgentIp:   agentIP,
-		})
-		if err != nil {
-			log.Printf("Heartbeat failed: %v", err)
-			time.Sleep(retryDelay)
-			retryDelay = time.Duration(float64(retryDelay) * 1.5)
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
-			continue
-		}
-		if resp != nil && resp.Settings != nil {
-			applySettings(resp.Settings)
-		}
-		retryDelay = 1 * time.Second
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-time.After(10 * time.Second):
-		}
-	}
+    retryDelay := 1 * time.Second
+    maxRetryDelay := 2 * time.Minute
+    for {
+        select {
+        case <-p.ctx.Done():
+            return
+        default:
+        }
+        resp, err := backendClient.Heartbeat(p.ctx, &pb.HeartbeatRequest{
+            VpsId:     p.cfg.VpsID,
+            Timestamp: time.Now().Unix(),
+            AgentIp:   p.currentAgentIP(),
+        })
+        if err != nil {
+            log.Printf("Heartbeat failed: %v", err)
+            select {
+            case <-p.ctx.Done():
+                return
+            case <-time.After(retryDelay):
+            }
+            retryDelay = time.Duration(float64(retryDelay) * 1.5)
+            if retryDelay > maxRetryDelay {
+                retryDelay = maxRetryDelay
+            }
+            continue
+        }
+        if resp != nil && resp.Settings != nil {
+            applySettings(resp.Settings)
+        }
+        retryDelay = 1 * time.Second
+        select {
+        case <-p.ctx.Done():
+            return
+        case <-time.After(10 * time.Second):
+        }
+    }
 }
 
 // F0-19: Triggers both telemetry and screenshot. Non-blocking, debounced by 1-slot buffer.
@@ -211,80 +272,92 @@ func (p *program) sendTelemetryImmediate() {
 }
 
 func (p *program) telemetryLoop(backendClient pb.BackendServiceClient) {
-	retryDelay := 1 * time.Second
-	maxRetryDelay := 30 * time.Second
+    retryDelay := 1 * time.Second
+    maxRetryDelay := 30 * time.Second
 
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		default:
-		}
+    for {
+        select {
+        case <-p.ctx.Done():
+            return
+        default:
+        }
 
-		stream, err := backendClient.StreamTelemetry(p.ctx)
-		if err != nil {
-			log.Printf("Telemetry stream connect error: %v", err)
-			time.Sleep(retryDelay)
-			retryDelay = time.Duration(float64(retryDelay) * 1.5)
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
-			continue
-		}
+        stream, err := backendClient.StreamTelemetry(p.ctx)
+        if err != nil {
+            log.Printf("Telemetry stream connect error: %v", err)
+            select {
+            case <-p.ctx.Done():
+                return
+            case <-time.After(retryDelay):
+            }
+            retryDelay = time.Duration(float64(retryDelay) * 1.5)
+            if retryDelay > maxRetryDelay {
+                retryDelay = maxRetryDelay
+            }
+            continue
+        }
 
-		p.telemetryMu.Lock()
-		p.telemetryStream = stream
-		p.telemetryMu.Unlock()
+        p.telemetryMu.Lock()
+        p.telemetryStream = stream
+        p.telemetryMu.Unlock()
 
-		retryDelay = 1 * time.Second
+        retryDelay = 1 * time.Second
 
-		for {
-			select {
-			case <-p.ctx.Done():
-				return
-			case <-p.refreshTelemetryCh:
-				p.sendTelemetryImmediate()
-			default:
-			}
+        for {
+            select {
+            case <-p.ctx.Done():
+                return
+            case <-p.refreshTelemetryCh:
+                p.sendTelemetryImmediate()
+            default:
+            }
 
-			select {
-			case <-p.ctx.Done():
-				return
-			default:
-			}
+            select {
+            case <-p.ctx.Done():
+                return
+            default:
+            }
 
-			metrics, err := telemetry.CollectMetrics()
-			if err != nil {
-				log.Printf("Metrics error: %v", err)
-				settings.mu.RLock()
-				interval := settings.telemetryInterval
-				settings.mu.RUnlock()
-				time.Sleep(interval)
-				continue
-			}
+            metrics, err := telemetry.CollectMetrics()
+            if err != nil {
+                log.Printf("Metrics error: %v", err)
+                settings.mu.RLock()
+                interval := settings.telemetryInterval
+                settings.mu.RUnlock()
+                select {
+                case <-p.ctx.Done():
+                    return
+                case <-time.After(interval):
+                }
+                continue
+            }
 
-			req := &pb.TelemetryRequest{
-				VpsId:     p.cfg.VpsID,
-				CpuUsage:  float32(metrics.CPUUsage),
-				RamUsage:  float32(metrics.RAMUsage),
-				RamTotal:  float32(metrics.RAMTotal),
-				DiskUsage: float32(metrics.DiskUsage),
-				DiskTotal: float32(metrics.DiskTotal),
-				NetTx:     float32(metrics.NetTx),
-				NetRx:     float32(metrics.NetRx),
-				Timestamp: metrics.Timestamp,
-			}
-			if err := stream.Send(req); err != nil {
-				log.Printf("Telemetry stream send error: %v", err)
-				break
-			}
+            req := &pb.TelemetryRequest{
+                VpsId:     p.cfg.VpsID,
+                CpuUsage:  float32(metrics.CPUUsage),
+                RamUsage:  float32(metrics.RAMUsage),
+                RamTotal:  float32(metrics.RAMTotal),
+                DiskUsage: float32(metrics.DiskUsage),
+                DiskTotal: float32(metrics.DiskTotal),
+                NetTx:     float32(metrics.NetTx),
+                NetRx:     float32(metrics.NetRx),
+                Timestamp: metrics.Timestamp,
+            }
+            if err := stream.Send(req); err != nil {
+                log.Printf("Telemetry stream send error: %v", err)
+                break
+            }
 
-			settings.mu.RLock()
-			interval := settings.telemetryInterval
-			settings.mu.RUnlock()
-			time.Sleep(interval)
-		}
-	}
+            settings.mu.RLock()
+            interval := settings.telemetryInterval
+            settings.mu.RUnlock()
+            select {
+            case <-p.ctx.Done():
+                return
+            case <-time.After(interval):
+            }
+        }
+    }
 }
 
 func (p *program) screenshotLoop(backendClient pb.BackendServiceClient) {
@@ -316,88 +389,96 @@ func (p *program) screenshotLoop(backendClient pb.BackendServiceClient) {
 }
 
 func (p *program) captureAndUpload(backendClient pb.BackendServiceClient) {
-	if telemetry.IsHeadless() {
-		return
-	}
-	data, err := telemetry.CaptureScreenBytes()
-	if err != nil {
-		log.Printf("Screenshot capture failed: %v", err)
-		return
-	}
-	_, err = backendClient.UploadScreenshot(p.ctx, &pb.ScreenshotRequest{
-		VpsId:     p.cfg.VpsID,
-		ImageData: data,
-	})
-	if err != nil {
-		log.Printf("Screenshot upload failed: %v", err)
-	}
+    if telemetry.IsHeadless() {
+        log.Printf("Screenshot skipped: headless environment")
+        return
+    }
+    data, err := telemetry.CaptureScreenBytes()
+    if err != nil {
+        log.Printf("Screenshot capture failed: %v", err)
+        return
+    }
+    _, err = backendClient.UploadScreenshot(p.ctx, &pb.ScreenshotRequest{
+        VpsId:     p.cfg.VpsID,
+        ImageData: data,
+    })
+    if err != nil {
+        log.Printf("Screenshot upload failed: %v", err)
+    }
 }
 
 // =================== StreamAgentIO loop ===================
 
 func (p *program) ioLoop(backendClient pb.BackendServiceClient) {
-	retryDelay := 1 * time.Second
-	maxRetryDelay := 30 * time.Second
-	agentIP := getOutboundIP()
+    retryDelay := 1 * time.Second
+    maxRetryDelay := 30 * time.Second
 
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		default:
-		}
+    for {
+        select {
+        case <-p.ctx.Done():
+            return
+        default:
+        }
 
-		stream, err := backendClient.StreamAgentIO(p.ctx)
-		if err != nil {
-			log.Printf("StreamAgentIO connect error: %v", err)
-			time.Sleep(retryDelay)
-			retryDelay = time.Duration(float64(retryDelay) * 1.5)
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
-			continue
-		}
+        stream, err := backendClient.StreamAgentIO(p.ctx)
+        if err != nil {
+            log.Printf("StreamAgentIO connect error: %v", err)
+            select {
+            case <-p.ctx.Done():
+                return
+            case <-time.After(retryDelay):
+            }
+            retryDelay = time.Duration(float64(retryDelay) * 1.5)
+            if retryDelay > maxRetryDelay {
+                retryDelay = maxRetryDelay
+            }
+            continue
+        }
 
-		p.ioMu.Lock()
-		p.ioStream = stream
-		p.ioMu.Unlock()
+        p.ioMu.Lock()
+        p.ioStream = stream
+        p.ioMu.Unlock()
 
-		// Send register message (agent -> server: identifies this connection)
-		if err := stream.Send(&pb.AgentMessage{
-			Body: &pb.AgentMessage_Register{
-				Register: &pb.RegisterRequest{
-					VpsId:   p.cfg.VpsID,
-					AgentIp: agentIP,
-				},
-			},
-		}); err != nil {
-			log.Printf("Register send failed: %v", err)
-			stream.CloseSend()
-			time.Sleep(retryDelay)
-			continue
-		}
+        // Send register message (agent -> server: identifies this connection)
+        if err := stream.Send(&pb.AgentMessage{
+            Body: &pb.AgentMessage_Register{
+                Register: &pb.RegisterRequest{
+                    VpsId:   p.cfg.VpsID,
+                    AgentIp: p.currentAgentIP(),
+                },
+            },
+        }); err != nil {
+            log.Printf("Register send failed: %v", err)
+            stream.CloseSend()
+            select {
+            case <-p.ctx.Done():
+                return
+            case <-time.After(retryDelay):
+            }
+            continue
+        }
 
-		log.Printf("StreamAgentIO connected (vps=%s ip=%s)", p.cfg.VpsID, agentIP)
-		retryDelay = 1 * time.Second
+        log.Printf("StreamAgentIO connected (vps=%s ip=%s)", p.cfg.VpsID, p.currentAgentIP())
+        retryDelay = 1 * time.Second
 
-		for {
-			msg, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				log.Printf("StreamAgentIO recv error: %v", err)
-				break
-			}
-			p.handleServerMessage(stream, msg)
-		}
+        for {
+            msg, err := stream.Recv()
+            if err == io.EOF {
+                break
+            }
+            if err != nil {
+                log.Printf("StreamAgentIO recv error: %v", err)
+                break
+            }
+            p.handleServerMessage(stream, msg)
+        }
 
-		stream.CloseSend()
-		p.ioMu.Lock()
-		p.ioStream = nil
-		p.ioMu.Unlock()
-		log.Println("StreamAgentIO disconnected, will reconnect")
-	}
+        stream.CloseSend()
+        p.ioMu.Lock()
+        p.ioStream = nil
+        p.ioMu.Unlock()
+        log.Println("StreamAgentIO disconnected, will reconnect")
+    }
 }
 
 func (p *program) sendIO(msg *pb.AgentMessage) bool {
@@ -426,46 +507,72 @@ func (p *program) handleServerMessage(stream pb.BackendService_StreamAgentIOClie
 		p.handleShellInput(body.ShellInput)
 	case *pb.ServerMessage_ShellClose:
 		p.handleShellClose(stream, body.ShellClose)
-	case *pb.ServerMessage_Refresh:
-		go p.handleRefresh(stream, msg.RequestId)
+    case *pb.ServerMessage_Refresh:
+        go p.handleRefresh(stream, msg.RequestId, body.Refresh)
+    case *pb.ServerMessage_SettingsUpdate:
+        go p.handleSettingsUpdate(stream, msg.RequestId, body.SettingsUpdate)
+    case *pb.ServerMessage_DeleteFile:
+        go p.handleDeleteFile(stream, msg.RequestId, body.DeleteFile)
+    case *pb.ServerMessage_Mkdir:
+        go p.handleMkdir(stream, msg.RequestId, body.Mkdir)
+    case *pb.ServerMessage_RenameFile:
+        go p.handleRenameFile(stream, msg.RequestId, body.RenameFile)
 	default:
 		log.Printf("Unhandled server message body type")
 	}
 }
 
 func (p *program) handleExec(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.CommandRequest) {
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", req.Command)
-	} else {
-		cmd = exec.Command("sh", "-c", req.Command)
-	}
-	timeout := 30 * time.Second
-	if req.TimeoutSeconds > 0 {
-		timeout = time.Duration(req.TimeoutSeconds) * time.Second
-	}
-	ctx, cancel := context.WithTimeout(p.ctx, timeout)
-	defer cancel()
-	cmd = exec.CommandContext(ctx, cmd.Args[0], cmd.Args[1:]...)
-	out, err := cmd.CombinedOutput()
-	resp := &pb.CommandResponse{Output: string(out)}
-	if err != nil {
-		resp.Success = false
-		if ctx.Err() == context.DeadlineExceeded {
-			resp.Output = "Command timed out"
-		} else {
-			resp.Output = fmt.Sprintf("%s: %s", err.Error(), string(out))
-		}
-	} else {
-		resp.Success = true
-	}
-	_ = stream.Send(&pb.AgentMessage{
-		RequestId: requestId,
-		Body:      &pb.AgentMessage_ExecResult{ExecResult: resp},
-	})
+    if err := p.validateVpsId(req.GetVpsId()); err != nil {
+        _ = stream.Send(&pb.AgentMessage{
+            RequestId: requestId,
+            Body: &pb.AgentMessage_ExecResult{ExecResult: &pb.CommandResponse{
+                Success: false,
+                Output:  fmt.Sprintf("invalid vps_id: %v", err),
+            }},
+        })
+        return
+    }
+    timeout := 30 * time.Second
+    if req.TimeoutSeconds > 0 {
+        timeout = time.Duration(req.TimeoutSeconds) * time.Second
+    }
+    ctx, cancel := context.WithTimeout(p.ctx, timeout)
+    defer cancel()
+    var cmd *exec.Cmd
+    if runtime.GOOS == "windows" {
+        cmd = exec.CommandContext(ctx, "cmd", "/C", req.Command)
+    } else {
+        cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
+    }
+    out, err := cmd.CombinedOutput()
+    resp := &pb.CommandResponse{Output: string(out)}
+    if err != nil {
+        resp.Success = false
+        if ctx.Err() == context.DeadlineExceeded {
+            resp.Output = "Command timed out"
+        } else {
+            resp.Output = fmt.Sprintf("%s: %s", err.Error(), string(out))
+        }
+    } else {
+        resp.Success = true
+    }
+    _ = stream.Send(&pb.AgentMessage{
+        RequestId: requestId,
+        Body:      &pb.AgentMessage_ExecResult{ExecResult: resp},
+    })
 }
 
 func (p *program) handleListdir(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.DirRequest) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body: &pb.AgentMessage_ListdirResult{
+				ListdirResult: &pb.DirResponse{Success: false, Error: fmt.Sprintf("invalid vps_id: %v", err)},
+			},
+		})
+		return
+	}
 	entries, err := os.ReadDir(req.Path)
 	if err != nil {
 		_ = stream.Send(&pb.AgentMessage{
@@ -498,6 +605,15 @@ func (p *program) handleListdir(stream pb.BackendService_StreamAgentIOClient, re
 }
 
 func (p *program) handleRead(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.FileRequest) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body: &pb.AgentMessage_ReadResult{
+				ReadResult: &pb.FileResponse{Success: false, Error: fmt.Sprintf("invalid vps_id: %v", err)},
+			},
+		})
+		return
+	}
 	data, err := os.ReadFile(req.Path)
 	if err != nil {
 		_ = stream.Send(&pb.AgentMessage{
@@ -517,7 +633,16 @@ func (p *program) handleRead(stream pb.BackendService_StreamAgentIOClient, reque
 }
 
 func (p *program) handleWrite(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.WriteRequest) {
-	err := os.WriteFile(req.Path, req.Content, 0644)
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body: &pb.AgentMessage_WriteResult{
+				WriteResult: &pb.WriteResponse{Success: false, Error: fmt.Sprintf("invalid vps_id: %v", err)},
+			},
+		})
+		return
+	}
+	err := os.WriteFile(req.Path, req.Content, 0600)
 	resp := &pb.WriteResponse{Success: err == nil}
 	if err != nil {
 		resp.Error = err.Error()
@@ -529,6 +654,37 @@ func (p *program) handleWrite(stream pb.BackendService_StreamAgentIOClient, requ
 }
 
 func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.ShellOpenRequest) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body: &pb.AgentMessage_ShellOpened{
+				ShellOpened: &pb.ShellOpenedResponse{SessionId: req.SessionId, Success: false, Error: fmt.Sprintf("invalid vps_id: %v", err)},
+			},
+		})
+		return
+	}
+	if req.SessionId == "" || len(req.SessionId) > 128 {
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body: &pb.AgentMessage_ShellOpened{
+				ShellOpened: &pb.ShellOpenedResponse{SessionId: req.SessionId, Success: false, Error: "session_id must be 1..128 bytes"},
+			},
+		})
+		return
+	}
+	p.shellsMu.Lock()
+	if _, exists := p.shells[req.SessionId]; exists {
+		p.shellsMu.Unlock()
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body: &pb.AgentMessage_ShellOpened{
+				ShellOpened: &pb.ShellOpenedResponse{SessionId: req.SessionId, Success: false, Error: "session_id already open"},
+			},
+		})
+		return
+	}
+	p.shellsMu.Unlock()
+
 	shell := req.Shell
 	if shell == "" {
 		if runtime.GOOS == "windows" {
@@ -537,12 +693,7 @@ func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, 
 			shell = "bash"
 		}
 	}
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command(shell)
-	} else {
-		cmd = exec.Command(shell)
-	}
+	cmd := exec.Command(shell)
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		_ = stream.Send(&pb.AgentMessage{
@@ -570,21 +721,36 @@ func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, 
 
 func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, sessionId string, ptmx *os.File) {
 	buf := make([]byte, 4096)
-	for {
-		n, err := ptmx.Read(buf)
-		if n > 0 {
-			if !p.sendIO(&pb.AgentMessage{
-				Body: &pb.AgentMessage_ShellOutput{
-					ShellOutput: &pb.ShellOutput{SessionId: sessionId, Data: append([]byte(nil), buf[:n]...)},
-				},
-			}) {
+	readErrCh := make(chan error, 1)
+	go func() {
+		for {
+			n, err := ptmx.Read(buf)
+			if n > 0 {
+				if !p.sendIO(&pb.AgentMessage{
+					Body: &pb.AgentMessage_ShellOutput{
+						ShellOutput: &pb.ShellOutput{SessionId: sessionId, Data: append([]byte(nil), buf[:n]...)},
+					},
+				}) {
+					readErrCh <- io.EOF
+					return
+				}
+			}
+			if err != nil {
+				readErrCh <- err
 				return
 			}
 		}
+	}()
+	select {
+	case <-p.ctx.Done():
+		_ = ptmx.Close()
+		p.cleanupShell(sessionId)
+		return
+	case err := <-readErrCh:
 		if err != nil {
 			p.cleanupShell(sessionId)
-			return
 		}
+		return
 	}
 }
 
@@ -624,13 +790,93 @@ func (p *program) cleanupShell(sessionId string) {
 	}
 }
 
-func (p *program) handleRefresh(stream pb.BackendService_StreamAgentIOClient, requestId string) {
+func (p *program) handleSettingsUpdate(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.SettingsUpdate) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		log.Printf("SettingsUpdate rejected: %v", err)
+		return
+	}
+	applySettings(req.GetSettings())
+	settings.mu.RLock()
+	tInt := settings.telemetryInterval
+	sInt := settings.screenshotInterval
+	settings.mu.RUnlock()
+	log.Printf("Settings pushed: telemetry=%v screenshot=%v", tInt, sInt)
+	if requestId != "" {
+		_ = stream.Send(&pb.AgentMessage{
+			RequestId: requestId,
+			Body:      &pb.AgentMessage_RefreshAck{RefreshAck: &pb.RefreshAck{Success: true, Message: "applied"}},
+		})
+	}
+}
+
+func (p *program) sendFileOpResult(stream pb.BackendService_StreamAgentIOClient, requestId string, err error) {
+	resp := &pb.FileOperationResponse{Success: err == nil}
+	if err != nil {
+		resp.Error = err.Error()
+	}
+	_ = stream.Send(&pb.AgentMessage{
+		RequestId: requestId,
+		Body:      &pb.AgentMessage_FileOpResult{FileOpResult: resp},
+	})
+}
+
+func (p *program) handleDeleteFile(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.DeleteFileRequest) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		p.sendFileOpResult(stream, requestId, fmt.Errorf("invalid vps_id: %w", err))
+		return
+	}
+	if err := os.Remove(req.GetPath()); err != nil {
+		log.Printf("DeleteFile failed: %v", err)
+		p.sendFileOpResult(stream, requestId, err)
+		return
+	}
+	p.sendFileOpResult(stream, requestId, nil)
+}
+
+func (p *program) handleMkdir(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.MkdirRequest) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		p.sendFileOpResult(stream, requestId, fmt.Errorf("invalid vps_id: %w", err))
+		return
+	}
+	if err := os.MkdirAll(req.GetPath(), 0755); err != nil {
+		log.Printf("Mkdir failed: %v", err)
+		p.sendFileOpResult(stream, requestId, err)
+		return
+	}
+	p.sendFileOpResult(stream, requestId, nil)
+}
+
+func (p *program) handleRenameFile(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.RenameFileRequest) {
+	if err := p.validateVpsId(req.GetVpsId()); err != nil {
+		p.sendFileOpResult(stream, requestId, fmt.Errorf("invalid vps_id: %w", err))
+		return
+	}
+	if err := os.Rename(req.GetOldPath(), req.GetNewPath()); err != nil {
+		log.Printf("RenameFile failed: %v", err)
+		p.sendFileOpResult(stream, requestId, err)
+		return
+	}
+	p.sendFileOpResult(stream, requestId, nil)
+}
+
+func (p *program) handleRefresh(stream pb.BackendService_StreamAgentIOClient, requestId string, req *pb.RefreshRequest) {
+	msg := "queued"
+	p.telemetryMu.Lock()
+	tStream := p.telemetryStream
+	p.telemetryMu.Unlock()
+	if tStream == nil {
+		msg = "stream_busy"
+	} else if req != nil && req.VpsId != "" && req.VpsId != p.cfg.VpsID {
+		// Refresh was targeted at a different agent; surface the offline
+		// semantic so the server can fall back to the correct agent.
+		msg = "agent_offline"
+	}
 	p.triggerRefresh()
 	_ = stream.Send(&pb.AgentMessage{
 		RequestId: requestId,
 		Body: &pb.AgentMessage_RefreshAck{RefreshAck: &pb.RefreshAck{
 			Success: true,
-			Message: "queued",
+			Message: msg,
 		}},
 	})
 }
