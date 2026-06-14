@@ -78,10 +78,10 @@ func renderBar(label string, value float64, color lipgloss.TerminalColor) string
 
 	var bar string
 	if filled > 0 {
-		bar += barStyle.Render(strings.Repeat("█", filled))
+		bar += barStyle.Render(strings.Repeat("#", filled))
 	}
 	if empty > 0 {
-		bar += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(strings.Repeat("░", empty))
+		bar += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(strings.Repeat("-", empty))
 	}
 
 	var colorCode lipgloss.TerminalColor
@@ -135,11 +135,11 @@ func (m monitorModel) View() string {
 		Padding(0, 2)
 
 	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("📊 System Monitor"))
+	b.WriteString(titleStyle.Render("=== System Monitor ==="))
 	b.WriteString("\n\n")
 
 	if m.metrics == nil {
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("  ⏳ Collecting metrics..."))
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("  Collecting metrics..."))
 		b.WriteString("\n")
 	} else {
 		met := m.metrics
@@ -151,9 +151,9 @@ func (m monitorModel) View() string {
 		b.WriteString(renderBar("Disk", met.DiskUsage, lipgloss.Color("208")))
 		b.WriteString("\n\n")
 
-		b.WriteString(renderNetBar("▲ UL", met.NetTx, lipgloss.Color("10")))
+		b.WriteString(renderNetBar("UL", met.NetTx, lipgloss.Color("10")))
 		b.WriteString("\n")
-		b.WriteString(renderNetBar("▼ DL", met.NetRx, lipgloss.Color("39")))
+		b.WriteString(renderNetBar("DL", met.NetRx, lipgloss.Color("39")))
 		b.WriteString("\n\n")
 
 		totalGB := met.RAMTotal / 1024 / 1024 / 1024

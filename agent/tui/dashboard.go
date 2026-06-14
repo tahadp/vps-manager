@@ -38,13 +38,13 @@ type dashboardModel struct {
 func InitialDashboardModel(status string, actionCb func(DashboardAction) (string, error)) dashboardModel {
 	return dashboardModel{
 		choices: []string{
-			"▶ Start Agent (Foreground)",
-			"📊 Monitor Metrics (Live)",
-			"📦 Install Service",
-			"🗑️  Uninstall Service",
-			"✅ Start Service",
-			"⏹️  Stop Service",
-			"❌ Quit",
+			"[>] Start Agent (Foreground)",
+			"[*] Monitor Metrics (Live)",
+			"[+] Install Service",
+			"[-] Uninstall Service",
+			"[+] Start Service",
+			"[-] Stop Service",
+			"[x] Quit",
 		},
 		actions: []DashboardAction{
 			ActionStartForeground,
@@ -152,7 +152,7 @@ func (m dashboardModel) View() string {
 		Padding(0, 2)
 	
 	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("🖥️  VPS Agent Dashboard"))
+	b.WriteString(titleStyle.Render("=== VPS Agent Dashboard ==="))
 	b.WriteString("\n\n")
 	
 	// Status
@@ -178,7 +178,7 @@ func (m dashboardModel) View() string {
 		style := lipgloss.NewStyle()
 		
 		if m.cursor == i {
-			cursor = "▸ "
+			cursor = "> "
 			style = style.Foreground(lipgloss.Color("212")).Bold(true)
 		} else {
 			style = style.Foreground(lipgloss.Color("252"))
@@ -190,7 +190,7 @@ func (m dashboardModel) View() string {
 	// Loading indicator
 	if m.loading {
 		b.WriteString("\n")
-		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("  ⏳ Processing..."))
+		b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Render("  Processing..."))
 		b.WriteString("\n")
 	}
 

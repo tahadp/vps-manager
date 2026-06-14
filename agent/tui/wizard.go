@@ -193,7 +193,7 @@ func (m wizardModel) View() string {
 		Padding(0, 2)
 	
 	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("🔧 VPS Agent Configuration"))
+	b.WriteString(titleStyle.Render("=== VPS Agent Configuration ==="))
 	b.WriteString("\n\n")
 	b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("  Configure your agent to connect to the backend server."))
 	b.WriteString("\n\n")
@@ -218,7 +218,7 @@ func (m wizardModel) View() string {
 			Foreground(lipgloss.Color("9")).
 			Bold(true).
 			Padding(0, 1)
-		b.WriteString(errStyle.Render(fmt.Sprintf("  ⚠ %v", m.err)))
+		b.WriteString(errStyle.Render(fmt.Sprintf("  [!] %v", m.err)))
 		b.WriteString("\n\n")
 	}
 
