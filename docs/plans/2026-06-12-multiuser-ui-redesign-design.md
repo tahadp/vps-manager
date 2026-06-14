@@ -1,3 +1,9 @@
+# STATUS: SUPERSEDED 2026-06-14
+
+> Bu plan eski nesil (whitelist öncesi) mimariyi anlatıyor. Güncel mimari için
+> bkz: `/proje.md` ve `/AGENTS.md`. Uygulama geçmişi için: `/implementation_plan.md`
+> ve `/task.md`.
+
 # Multi-User UI & Architecture Design
 
 ## 1. Overview
