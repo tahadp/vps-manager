@@ -157,7 +157,8 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
       const hours = Math.max(1, Math.ceil(rangeMin / 60));
       const metrics = await api<any[]>(`/api/vps/${id}/metrics?hours=${hours}`);
       if (Array.isArray(metrics) && metrics.length > 0) {
-        const since = Date.now() - rangeMin * 60 * 1000;
+        const latestTime = new Date(metrics[metrics.length - 1].timestamp).getTime();
+        const since = latestTime - rangeMin * 60 * 1000;
         const filtered = metrics.filter((m: any) => new Date(m.timestamp).getTime() >= since);
         setChartData(filtered.map((m: any) => ({
           time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
