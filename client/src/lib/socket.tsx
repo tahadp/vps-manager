@@ -27,24 +27,25 @@ const SocketContext = createContext<SocketContextValue>({
 });
 
 interface SocketProviderProps {
-  token: string | null;
+  authenticated: boolean;
   children: ReactNode;
 }
 
-export function SocketProvider({ token, children }: SocketProviderProps) {
+export function SocketProvider({ authenticated, children }: SocketProviderProps) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [connectError, setConnectError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!token) {
+    if (!authenticated) {
       setSocket(null);
       setConnectionStatus("disconnected");
       return;
     }
 
     const instance = io(API, {
-      auth: { token },
+      withCredentials: true,
+      transports: ["websocket"],
       reconnection: true,
       reconnectionDelay: 1000 + Math.random() * 500,
       reconnectionDelayMax: 30000,
@@ -89,7 +90,7 @@ export function SocketProvider({ token, children }: SocketProviderProps) {
       instance.disconnect();
       setSocket(null);
     };
-  }, [token]);
+  }, [authenticated]);
 
   const value = useMemo<SocketContextValue>(
     () => ({ socket, connectionStatus, connectError }),
@@ -101,14 +102,4 @@ export function SocketProvider({ token, children }: SocketProviderProps) {
 
 export function useSocket(): SocketContextValue {
   return useContext(SocketContext);
-}
-
-export function getSocket(token: string): Socket {
-  return io(API, {
-    auth: { token },
-    reconnection: true,
-    reconnectionDelay: 1000 + Math.random() * 500,
-    reconnectionDelayMax: 30000,
-    randomizationFactor: 0.5
-  });
 }
