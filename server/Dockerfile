@@ -1,6 +1,5 @@
 FROM node:22-alpine AS builder
-ARG NODE_ENV=development
-ENV NODE_ENV=${NODE_ENV}
+ENV NODE_ENV=development
 WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma
