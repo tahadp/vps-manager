@@ -24,7 +24,9 @@ import { redisCache } from './redis';
 import { logger } from './logger';
 import { metricsHandler, metrics as m } from './metrics-prom';
 
-dotenv.config({ path: '../.env' });
+import path from 'path';
+
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 

@@ -1,7 +1,8 @@
 import Redis from 'ioredis';
 import dotenv from 'dotenv';
 import { logger } from './logger';
-dotenv.config({ path: '../.env' });
+import path from 'path';
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const REDIS_HOST = process.env.REDIS_HOST || 'localhost';
 const REDIS_PORT = Number(process.env.REDIS_PORT) || 6379;
