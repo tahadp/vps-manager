@@ -112,6 +112,7 @@ authRouter.post('/register', validate(schemas.register), async (req, res) => {
 
     res.json({ message: 'Registration successful. Waiting for admin approval.', user: { id: user.id, email: user.email, username: user.username } });
   } catch (error) {
+    (req as any).log?.error({ err: error }, 'Register failed with internal error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -157,6 +158,7 @@ authRouter.post('/login', validate(schemas.login), async (req, res) => {
 
     res.json({ token, user: { id: user.id, email: user.email, username: user.username, role: user.role } });
   } catch (error) {
+    (req as any).log?.error({ err: error }, 'Login failed with internal error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -199,6 +201,7 @@ authRouter.post('/refresh', async (req, res) => {
     setAuthCookie(res, accessToken, rememberMe);
     res.json({ success: true });
   } catch (error) {
+    (req as any).log?.error({ err: error }, 'Token refresh failed with internal error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -229,6 +232,7 @@ authRouter.post('/logout-all', requireAuth, async (req: AuthRequest, res) => {
     res.clearCookie('refresh-token', { path: REFRESH_TOKEN_PATH });
     res.json({ success: true });
   } catch (error) {
+    (req as any).log?.error({ err: error }, 'Logout all failed with internal error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -274,6 +278,7 @@ authRouter.post('/change-password', requireAuth, validate(schemas.changePassword
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {
+    (req as any).log?.error({ err: error }, 'Password change failed with internal error');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
