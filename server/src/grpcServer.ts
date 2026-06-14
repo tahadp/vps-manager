@@ -230,9 +230,6 @@ server.addService(vpsPackage.BackendService.service, {
           }
           return;
         }
-        if (msg.body === 'shell_opened' || msg.body === 'shell_closed') {
-          return;
-        }
         resolveAgentResponse(msg);
       } catch (err) {
         logger.error({ err, vpsId: boundVpsId }, 'StreamAgentIO data handler error');

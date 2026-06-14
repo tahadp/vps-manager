@@ -142,7 +142,7 @@ export const initWebSocket = (server: http.Server) => {
           const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
           if (!vps || vps.userId !== user.id) return socket.emit('shell:error', { error: 'Unauthorized' });
         }
-        const session = await openShellOnAgent(vpsId, shell || (process.platform === 'win32' ? 'cmd.exe' : 'bash'));
+        const session = await openShellOnAgent(vpsId, shell || '');
         activeSessions.set(session.sessionId, vpsId);
         socket.join(`shell:${session.sessionId}`);
         socket.emit('shell:opened', { sessionId: session.sessionId, vpsId });
