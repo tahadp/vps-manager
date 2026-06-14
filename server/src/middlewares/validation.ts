@@ -64,10 +64,15 @@ export function validateQuery(schema: ZodSchema) {
         }));
         return res.status(400).json({ error: 'Validation failed', details: errors });
       }
-      req.query = result.data as any;
+      const validatedQuery = result.data as any;
+      for (const key of Object.keys(req.query)) {
+        delete req.query[key];
+      }
+      Object.assign(req.query, validatedQuery);
       next();
-    } catch (error) {
-      res.status(400).json({ error: 'Invalid query parameters' });
+    } catch (error: any) {
+      console.error('validateQuery error:', error);
+      res.status(400).json({ error: 'Invalid query parameters', details: error?.message });
     }
   };
 }
@@ -83,7 +88,11 @@ export function validateParams(schema: ZodSchema) {
         }));
         return res.status(400).json({ error: 'Validation failed', details: errors });
       }
-      req.params = result.data as any;
+      const validatedParams = result.data as any;
+      for (const key of Object.keys(req.params)) {
+        delete req.params[key];
+      }
+      Object.assign(req.params, validatedParams);
       next();
     } catch (error) {
       res.status(400).json({ error: 'Invalid URL parameters' });
