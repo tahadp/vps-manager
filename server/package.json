@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "ts-node src/index.ts",
     "build:proto": "node scripts/sync-proto.js",
+    "proto:check": "node scripts/sync-proto.js --check",
     "build:tsc": "tsc",
     "build:copyproto": "node -e \"const fs=require('fs'),path=require('path');const s=path.join(__dirname,'proto'),d=path.join(__dirname,'dist','proto');fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){fs.copyFileSync(path.join(s,f),path.join(d,f));}\"",
     "build": "prisma generate && npm run build:proto && npm run build:tsc && npm run build:copyproto",
@@ -27,6 +28,7 @@
     "@types/node": "^25.9.3",
     "axios": "^1.17.0",
     "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -43,6 +45,7 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/jsonwebtoken": "^9.0.10",
     "@vitest/coverage-v8": "^4.1.8",
     "pino-pretty": "^13.1.3",

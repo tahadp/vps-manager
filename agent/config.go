@@ -13,8 +13,15 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
-	configPath := getConfigPath()
-	data, err := os.ReadFile(configPath)
+	return loadConfigFrom(getConfigPath())
+}
+
+func SaveConfig(cfg *Config) error {
+	return saveConfigTo(getConfigPath(), cfg)
+}
+
+func loadConfigFrom(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -25,13 +32,12 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-func SaveConfig(cfg *Config) error {
-	configPath := getConfigPath()
+func saveConfigTo(path string, cfg *Config) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func getConfigPath() string {

@@ -40,12 +40,8 @@ redisCache.on('error', (err) => {
   logger.error({ err: err.message }, 'Redis Cache Error');
 });
 
-process.on('unhandledRejection', (reason) => {
-  if (reason && (reason as any).message && String((reason as any).message).includes('Redis')) {
-    logger.warn('Suppressed Redis unhandledRejection');
-    return;
-  }
-  logger.error({ reason }, 'Unhandled Rejection');
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error({ err: reason, promise }, 'Unhandled promise rejection');
 });
 
 redisPublisher.on('connect', () => logger.info('Redis Publisher connected'));

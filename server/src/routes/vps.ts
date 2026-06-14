@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
-import { execOnAgent, listDirOnAgent, readFileFromAgent, writeFileToAgent, refreshAgent } from '../agentCommands';
+import { execOnAgent, listDirOnAgent, readFileFromAgent, writeFileToAgent, refreshAgent, deleteFileOnAgent, mkdirOnAgent, renameFileOnAgent } from '../agentCommands';
 import { redisPublisher } from '../redis';
 import { OsType } from '@prisma/client';
-import { validate, validateQuery, validateParams, schemas } from '../middlewares/validation';
+import { validate, validateQuery, validateParams, schemas, safeFilePathSchema } from '../middlewares/validation';
 import { logAudit } from '../middlewares/audit';
+import { sendSettingsUpdate } from '../agentDispatcher';
 import { z } from 'zod';
 
 const publishVpsEvent = (type: 'ADDED' | 'DELETED' | 'STATUS_CHANGED' | 'RENAMED', payload: any) => {
@@ -27,7 +28,7 @@ const checkVpsAccess = async (vpsId: string, user: any) => {
 
 // Param schemas
 const idParamSchema = z.object({ id: z.string().uuid('Invalid VPS ID') });
-const fileQuerySchema = z.object({ path: z.string().max(1000).default('/') });
+const fileQuerySchema = z.object({ path: safeFilePathSchema.optional() });
 const metricsQuerySchema = z.object({ hours: z.string().optional() });
 const vpsSettingsSchema = z.object({
   screenshotIntervalSec: z.number().int().min(5).max(3600).optional(),
@@ -77,6 +78,7 @@ vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
     const vpsList = await prisma.vps.findMany({
       where,
       include: { user: { select: { id: true, email: true } } },
+      omit: { apiKey: true },
       orderBy: { name: 'asc' }
     });
     res.json(vpsList);
@@ -90,7 +92,8 @@ vpsRouter.get('/:id', requireAuth, validateParams(idParamSchema), async (req: Au
   try {
     const vps = await prisma.vps.findUnique({
       where: { id: req.params.id as string },
-      include: { user: { select: { id: true, email: true } } }
+      include: { user: { select: { id: true, email: true } } },
+      omit: { apiKey: true }
     });
     if (!vps) return res.status(404).json({ error: 'VPS not found' });
     if (req.user!.role !== 'ADMIN' && vps.userId !== req.user!.id) {
@@ -177,15 +180,23 @@ vpsRouter.post('/', requireAuth, validate(schemas.createVps), async (req: AuthRe
 vpsRouter.put('/:id', requireAuth, validateParams(idParamSchema), validate(schemas.updateVps), async (req: AuthRequest, res: any) => {
   if (req.user!.role !== 'ADMIN') return res.status(403).json({ error: 'Only admins can update VPS properties' });
   const { id } = req.params;
-  const { name, ipAddress, os, status, userId } = req.body;
+  const { name, ipAddress, os, customOsName, status } = req.body;
   try {
-    const dataToUpdate: any = { name, ipAddress, status, userId };
+    const dataToUpdate: any = { name, ipAddress, status };
     if (os) {
-      dataToUpdate.os = os.toUpperCase().includes('WINDOW') ? OsType.WINDOWS : OsType.LINUX;
+      dataToUpdate.os = os as OsType;
+      if (os === 'OTHER') {
+        dataToUpdate.customOsName = customOsName ? String(customOsName).trim() : null;
+      } else {
+        dataToUpdate.customOsName = null;
+      }
+    } else if (customOsName !== undefined) {
+      dataToUpdate.customOsName = customOsName ? String(customOsName).trim() : null;
     }
     const updatedVps = await prisma.vps.update({
       where: { id: id as string },
-      data: dataToUpdate
+      data: dataToUpdate,
+      omit: { apiKey: true }
     });
     publishVpsEvent('STATUS_CHANGED', { vpsId: updatedVps.id, status: updatedVps.status, name: updatedVps.name, userId: updatedVps.userId });
     res.json(updatedVps);
@@ -299,6 +310,24 @@ vpsRouter.put('/:id/settings', requireAuth, validateParams(idParamSchema), valid
         visibleCharts: req.body.visibleCharts ? JSON.stringify(req.body.visibleCharts) : JSON.stringify(['cpu', 'ram', 'disk', 'network'])
       }
     });
+
+    try {
+      const visibleCharts = typeof settings.visibleCharts === 'string'
+        ? JSON.parse(settings.visibleCharts)
+        : (settings.visibleCharts || ['cpu', 'ram', 'disk', 'network']);
+      sendSettingsUpdate(vpsId, {
+        screenshotIntervalSec: settings.screenshotIntervalSec,
+        telemetryIntervalSec: settings.telemetryIntervalSec,
+        ramDiskVisible: settings.ramDiskVisible,
+        networkVisible: settings.networkVisible,
+        telegramEnabled: settings.telegramEnabled,
+        customAlertMessage: settings.customAlertMessage,
+        visibleCharts
+      });
+    } catch (pushErr) {
+      console.warn('SettingsUpdate push to agent failed (agent offline?):', pushErr);
+    }
+
     res.json(settings);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -359,13 +388,16 @@ vpsRouter.get('/:id/files', requireAuth, validateParams(idParamSchema), validate
 });
 
 // Read File
-vpsRouter.get('/:id/file', requireAuth, validateParams(idParamSchema), validateQuery(fileQuerySchema), async (req: AuthRequest, res: any) => {
+vpsRouter.get('/:id/file', requireAuth, validateParams(idParamSchema), validateQuery(schemas.readFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const filePath = req.query.path as string;
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
     const result = await readFileFromAgent(vpsId, filePath);
+    if (result.content.length > 5 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File too large to read (>5MB)' });
+    }
     res.json({ success: true, content: result.content.toString('utf-8') });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -376,6 +408,9 @@ vpsRouter.get('/:id/file', requireAuth, validateParams(idParamSchema), validateQ
 vpsRouter.put('/:id/file', requireAuth, validateParams(idParamSchema), validate(schemas.writeFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const { path: filePath, content } = req.body;
+  if (Buffer.byteLength(content || '', 'utf-8') > 10 * 1024 * 1024) {
+    return res.status(413).json({ error: 'File content too large (>10MB)' });
+  }
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
@@ -388,14 +423,13 @@ vpsRouter.put('/:id/file', requireAuth, validateParams(idParamSchema), validate(
 });
 
 // Delete File or Directory
-vpsRouter.delete('/:id/files', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+vpsRouter.delete('/:id/files', requireAuth, validateParams(idParamSchema), validateQuery(schemas.deleteFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const filePath = req.query.path as string;
-  if (!filePath) return res.status(400).json({ error: 'Path is required' });
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await execOnAgent(vpsId, `rm -rf "${filePath}"`);
+    const result = await deleteFileOnAgent(vpsId, filePath);
     await logAudit({ userId: req.user!.id, action: 'FILE_DELETE', target: vpsId, details: `Deleted: ${filePath}` });
     res.json(result);
   } catch (err: any) {
@@ -404,15 +438,18 @@ vpsRouter.delete('/:id/files', requireAuth, validateParams(idParamSchema), async
 });
 
 // Create File or Directory
-vpsRouter.post('/:id/files', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+vpsRouter.post('/:id/files', requireAuth, validateParams(idParamSchema), validate(schemas.createFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
-  const { path: filePath, type } = req.body;
-  if (!filePath) return res.status(400).json({ error: 'Path is required' });
+  const { path: filePath, type } = req.body as { path: string; type: 'file' | 'directory' };
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const cmd = type === 'directory' ? `mkdir -p "${filePath}"` : `touch "${filePath}"`;
-    const result = await execOnAgent(vpsId, cmd);
+    let result;
+    if (type === 'directory') {
+      result = await mkdirOnAgent(vpsId, filePath);
+    } else {
+      result = await writeFileToAgent(vpsId, filePath, Buffer.alloc(0));
+    }
     await logAudit({ userId: req.user!.id, action: 'FILE_CREATE', target: vpsId, details: `Created: ${filePath}` });
     res.json(result);
   } catch (err: any) {
@@ -421,14 +458,13 @@ vpsRouter.post('/:id/files', requireAuth, validateParams(idParamSchema), async (
 });
 
 // Rename File or Directory
-vpsRouter.patch('/:id/files', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+vpsRouter.patch('/:id/files', requireAuth, validateParams(idParamSchema), validate(schemas.renameFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
-  const { oldPath, newPath } = req.body;
-  if (!oldPath || !newPath) return res.status(400).json({ error: 'Both oldPath and newPath are required' });
+  const { oldPath, newPath } = req.body as { oldPath: string; newPath: string };
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await execOnAgent(vpsId, `mv "${oldPath}" "${newPath}"`);
+    const result = await renameFileOnAgent(vpsId, oldPath, newPath);
     await logAudit({ userId: req.user!.id, action: 'FILE_RENAME', target: vpsId, details: `Renamed: ${oldPath} to ${newPath}` });
     res.json(result);
   } catch (err: any) {
@@ -437,16 +473,18 @@ vpsRouter.patch('/:id/files', requireAuth, validateParams(idParamSchema), async 
 });
 
 // Download File
-vpsRouter.get('/:id/file/download', requireAuth, validateParams(idParamSchema), async (req: AuthRequest, res: any) => {
+vpsRouter.get('/:id/file/download', requireAuth, validateParams(idParamSchema), validateQuery(schemas.deleteFile), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
   const filePath = req.query.path as string;
-  if (!filePath) return res.status(400).json({ error: 'Path is required' });
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
     const result = await readFileFromAgent(vpsId, filePath);
-    const fileName = filePath.split('/').pop() || 'file';
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    if (result.content.length > 5 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File too large to download (>5MB)' });
+    }
+    const safeName = (filePath.split('/').pop() || 'file').replace(/[^\w.\-]/g, '_');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodeURIComponent(safeName)}`);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.send(result.content);
   } catch (err: any) {

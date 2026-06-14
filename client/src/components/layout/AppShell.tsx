@@ -5,9 +5,10 @@ import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { CommandPalette } from '../CommandPalette';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { SocketProvider } from '@/lib/socket';
+import { api } from '@/lib/api';
 
 interface AppShellProps {
   children: ReactNode;
@@ -15,15 +16,32 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [token, setToken] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (pathname === '/login') {
-      setToken(null);
+      setAuthenticated(false);
       return;
     }
-    setToken(typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+    let cancelled = false;
+    (async () => {
+      try {
+        await api('/api/vps', { method: 'GET' });
+        if (!cancelled) setAuthenticated(true);
+      } catch {
+        if (!cancelled) {
+          setAuthenticated(false);
+          router.replace('/login');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pathname, router]);
+
+  useEffect(() => {
+    if (sidebarOpen) setSidebarOpen(false);
   }, [pathname]);
 
   const content = (
@@ -97,5 +115,13 @@ export function AppShell({ children }: AppShellProps) {
     return <>{children}</>;
   }
 
-  return <SocketProvider token={token}>{content}</SocketProvider>;
+  if (authenticated === null) {
+    return (
+      <div className="h-full flex items-center justify-center text-text-muted">
+        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return <SocketProvider authenticated={authenticated}>{content}</SocketProvider>;
 }

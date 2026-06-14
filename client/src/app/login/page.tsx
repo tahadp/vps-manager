@@ -3,12 +3,13 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mail, Lock, User, ShieldCheck, ArrowRight, Server, TerminalSquare, AlertCircle } from 'lucide-react';
+import { api, setStoredUser } from '@/lib/api';
 
 export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState('');
-  const [email, setEmail] = useState(''); // for register
-  const [username, setUsername] = useState(''); // for register
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -31,29 +32,21 @@ export default function Login() {
         ? { email, username, password }
         : { identifier, password, rememberMe };
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}${endpoint}`, {
+      const data = await api<{ user?: any; message?: string }>(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        json: payload
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong');
-        return;
-      }
 
       if (isRegister) {
-        setMsg('Registration successful. Waiting for admin approval.');
+        setMsg(data.message || 'Registration successful. Waiting for admin approval.');
         setIsRegister(false);
         setPassword('');
       } else {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        if (data.user) setStoredUser(data.user);
         router.push('/');
       }
-    } catch (err) {
-      setError('Failed to connect to server');
+    } catch (err: any) {
+      setError(err?.message || 'Failed to connect to server');
     } finally {
       setSubmitting(false);
     }

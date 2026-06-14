@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import http from 'http';
 import { randomUUID } from 'crypto';
 import { startGrpcServer } from './grpcServer';
@@ -15,7 +16,9 @@ import { rulesRouter } from './routes/rules';
 import { notificationsRouter } from './routes/notifications';
 import { initAlertingEngine } from './alerting';
 import { startMetricsPruneInterval } from './metrics';
+import { startAuditPruneInterval } from './middlewares/audit';
 import { authLimiter, apiLimiter } from './middlewares/rateLimit';
+import { requireCsrf } from './middlewares/csrf';
 import { prisma } from './prisma';
 import { redisCache } from './redis';
 import { logger } from './logger';
@@ -45,7 +48,8 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '12mb' })); // 10MB write + 2MB headroom
+app.use(cookieParser());
 
 app.use((req, _res, next) => {
   (req as any).id = randomUUID();
@@ -71,19 +75,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting + CSRF
 app.use('/api/auth', authLimiter, authRouter);
-app.use('/api/vps', apiLimiter, vpsRouter);
-app.use('/api/admin', apiLimiter, adminRouter);
-app.use('/api/settings', apiLimiter, settingsRouter);
-app.use('/api/audit', apiLimiter, auditRouter);
-app.use('/api/rules', apiLimiter, rulesRouter);
-app.use('/api/notifications', apiLimiter, notificationsRouter);
+app.use('/api/vps', requireCsrf, apiLimiter, vpsRouter);
+app.use('/api/admin', requireCsrf, apiLimiter, adminRouter);
+app.use('/api/settings', requireCsrf, apiLimiter, settingsRouter);
+app.use('/api/audit', requireCsrf, apiLimiter, auditRouter);
+app.use('/api/rules', requireCsrf, apiLimiter, rulesRouter);
+app.use('/api/notifications', requireCsrf, apiLimiter, notificationsRouter);
 
 // F6-1: Prometheus /metrics endpoint (no auth, not rate-limited — internal scrape only)
 app.get('/metrics', metricsHandler);
 
 const PORT = process.env.PORT || 5000;
+const GRPC_PORT = parseInt(process.env.GRPC_PORT || '50051', 10);
 const server = http.createServer(app);
 
 app.get('/health', (req, res) => {
@@ -103,8 +108,9 @@ app.get('/health/ready', async (_req, res) => {
 initWebSocket(server);
 
 server.listen(PORT, () => {
-  console.log(`HTTP/WebSocket Server is running on port ${PORT}`);
+  console.log(`HTTP/WebSocket Server is running on port ${PORT} (gRPC port: ${GRPC_PORT})`);
   startGrpcServer();
   initAlertingEngine();
   startMetricsPruneInterval();
+  startAuditPruneInterval();
 });

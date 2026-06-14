@@ -4,9 +4,8 @@ import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Trash2, Bell, AlertCircle, Filter, ChevronDown } from 'lucide-react';
-import io from 'socket.io-client';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { useSocket } from '@/lib/socket';
+import { api, getStoredUser } from '@/lib/api';
 
 const METRIC_OPTIONS = [
   { value: 'CPU', label: 'CPU' },
@@ -37,6 +36,7 @@ const MESSAGE_TEMPLATES = [
 export default function VpsAlertsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
+  const { socket } = useSocket();
   const [rules, setRules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,36 +55,28 @@ export default function VpsAlertsPage({ params }: { params: Promise<{ id: string
   const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { router.push('/login'); return; }
-    fetchRules(token);
+    if (!getStoredUser()) { router.push('/login'); return; }
+    fetchRules();
   }, [id, router]);
 
   useEffect(() => {
-    const socket = io(API, { transports: ['websocket'] });
-    socket.on('vps_event', (e: any) => {
-      if (e?.type === 'RULES_CHANGED') {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        fetchRules(token);
-      }
-    });
-    return () => { socket.disconnect(); };
-  }, [id]);
+    if (!socket) return;
+    const onEvent = (e: any) => {
+      if (e?.type === 'RULES_CHANGED') fetchRules();
+    };
+    socket.on('vps_event', onEvent);
+    return () => { socket.off('vps_event', onEvent); };
+  }, [socket, id]);
 
-  const fetchRules = async (token: string) => {
+  const fetchRules = async () => {
     try {
-      const res = await fetch(`${API}/api/rules`, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const d = await res.json();
-        if (Array.isArray(d)) setRules(d.filter((r: any) => !r.vpsId || r.vpsId === id));
-      }
+      const d = await api<any[]>('/api/rules');
+      if (Array.isArray(d)) setRules(d.filter((r: any) => !r.vpsId || r.vpsId === id));
     } catch {}
     setLoading(false);
   };
 
   const addRule = async () => {
-    const token = localStorage.getItem('token');
     const payload: any = { vpsId: id, ...newRule };
     if (newRule.metric !== 'OFFLINE') {
       payload.condition = newRule.condition;
@@ -92,22 +84,14 @@ export default function VpsAlertsPage({ params }: { params: Promise<{ id: string
       payload.metric = undefined;
       payload.offlineThresholdMin = newRule.offlineThresholdMin;
     }
-    const res = await fetch(`${API}/api/rules`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      const rule = await res.json();
-      setRules([rule, ...rules]);
-      setShowForm(false);
-      setNewRule({ metric: 'CPU', condition: '>', threshold: 90, durationMin: 10, offlineThresholdMin: 5, customMessage: '', restartOnAlert: false, action: 'ALERT' });
-    }
+    const rule = await api<any>('/api/rules', { method: 'POST', json: payload });
+    setRules([rule, ...rules]);
+    setShowForm(false);
+    setNewRule({ metric: 'CPU', condition: '>', threshold: 90, durationMin: 10, offlineThresholdMin: 5, customMessage: '', restartOnAlert: false, action: 'ALERT' });
   };
 
   const deleteRule = async (ruleId: string) => {
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/api/rules/${ruleId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await api(`/api/rules/${ruleId}`, { method: 'DELETE' });
     setRules(rules.filter(r => r.id !== ruleId));
     setConfirmDelete(null);
   };

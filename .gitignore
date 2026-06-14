@@ -53,6 +53,7 @@ implementation_plan.md
 # Build / Tooling
 /agent/dist
 /agent/coverage.out
+/agent/cover.out
 protoc/
 
 # OpenCode skill sessions

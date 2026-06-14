@@ -3,8 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Shield, Search, Filter, CheckCircle2, Ban, Server as ServerIcon, Mail, Calendar, AlertTriangle } from "lucide-react";
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { api, getStoredUser } from "@/lib/api";
 
 export default function AdminUsers() {
   const router = useRouter();
@@ -18,57 +17,54 @@ export default function AdminUsers() {
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = JSON.parse(localStorage.getItem("user") || '{}');
-
-    if (!token || storedUser.role !== 'ADMIN') {
+    const storedUser = getStoredUser();
+    if (!storedUser || storedUser.role !== 'ADMIN') {
       router.push("/");
       return;
     }
     setUser(storedUser);
-    fetchUsers(token);
+    fetchUsers();
   }, [router]);
 
-  const fetchUsers = async (token: string) => {
+  const fetchUsers = async () => {
     try {
-      const res = await fetch(`${API}/api/admin/users`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUsers(data);
+      const data = await api<any[]>('/api/admin/users');
+      setUsers(data);
 
-        // Fetch VPS count per user
-        const vpsRes = await fetch(`${API}/api/vps`, { headers: { Authorization: `Bearer ${token}` } });
-        if (vpsRes.ok) {
-          const vps = await vpsRes.json();
-          const counts: Record<string, number> = {};
-          vps.forEach((v: any) => { counts[v.userId] = (counts[v.userId] || 0) + 1; });
-          setVpsCount(counts);
-        }
-      }
+      const vps = await api<any[]>('/api/vps');
+      const counts: Record<string, number> = {};
+      vps.forEach((v: any) => { counts[v.userId] = (counts[v.userId] || 0) + 1; });
+      setVpsCount(counts);
     } catch (err) {}
     setLoading(false);
   };
 
   const updateStatus = async (id: string, status: string) => {
-    const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${API}/api/admin/users/${id}/status`, {
+      await api(`/api/admin/users/${id}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ status })
+        json: { status }
       });
-      if (res.ok) {
-        setToast({ type: 'success', message: `User ${status === 'APPROVED' ? 'approved' : status === 'BANNED' ? 'banned' : 'updated'}` });
-        setTimeout(() => setToast(null), 3000);
-        fetchUsers(token!);
-      } else {
-        setToast({ type: 'error', message: 'Update failed' });
-        setTimeout(() => setToast(null), 3000);
-      }
+      setToast({ type: 'success', message: `User ${status === 'APPROVED' ? 'approved' : status === 'BANNED' ? 'banned' : 'updated'}` });
+      setTimeout(() => setToast(null), 3000);
+      fetchUsers();
     } catch {
-      setToast({ type: 'error', message: 'Network error' });
+      setToast({ type: 'error', message: 'Update failed' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  const updateTier = async (id: string, tier: 'FREE' | 'PRO') => {
+    try {
+      await api(`/api/admin/users/${id}/tier`, {
+        method: 'PUT',
+        json: { tier }
+      });
+      setUsers(prev => prev.map(u => (u.id === id ? { ...u, tier } : u)));
+      setToast({ type: 'success', message: `Tier set to ${tier}` });
+      setTimeout(() => setToast(null), 3000);
+    } catch {
+      setToast({ type: 'error', message: 'Tier update failed' });
       setTimeout(() => setToast(null), 3000);
     }
   };
@@ -174,6 +170,7 @@ export default function AdminUsers() {
                 <th className="px-6 py-4 font-semibold">User</th>
                 <th className="px-6 py-4 font-semibold">Role</th>
                 <th className="px-6 py-4 font-semibold">Status</th>
+                <th className="px-6 py-4 font-semibold">Tier</th>
                 <th className="px-6 py-4 font-semibold">VPS</th>
                 <th className="px-6 py-4 font-semibold">Joined</th>
                 <th className="px-6 py-4 font-semibold">Last Login</th>
@@ -183,7 +180,7 @@ export default function AdminUsers() {
             <tbody className="divide-y divide-border-subtle">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-text-muted">No users found.</td>
+                  <td colSpan={8} className="px-6 py-12 text-center text-text-muted">No users found.</td>
                 </tr>
               ) : filtered.map(u => (
                 <tr key={u.id} className="hover:bg-neutral-bg3 transition-colors">
@@ -204,6 +201,17 @@ export default function AdminUsers() {
                     }`}>
                       {u.status}
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <select
+                      value={u.tier || 'FREE'}
+                      onChange={e => updateTier(u.id, e.target.value as 'FREE' | 'PRO')}
+                      disabled={u.id === user.id}
+                      className="px-2 py-1 text-xs bg-neutral-bg1 border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-brand disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="FREE">FREE</option>
+                      <option value="PRO">PRO</option>
+                    </select>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-xs text-text-secondary flex items-center gap-1"><ServerIcon className="w-3 h-3" /> {vpsCount[u.id] || 0}</span>

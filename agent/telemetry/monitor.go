@@ -56,24 +56,34 @@ func CollectMetrics() (*Metrics, error) {
 		m.DiskTotal = float64(dStat.Total)
 	}
 
-	// Network
+	// Network — aggregate across all non-loopback interfaces. The
+	// gopsutil/per-nic view is correct for per-link dashboards but
+	// misleading for a top-of-host throughput metric on multi-NIC
+	// servers, so we sum BytesSent/BytesRecv and skip loopback.
 	netMu.Lock()
 	defer netMu.Unlock()
 
-	netStats, err := net.IOCounters(false)
-	if err == nil && len(netStats) > 0 {
-		currentNet := &netStats[0]
+	netStats, err := net.IOCounters(true)
+	if err == nil {
+		var totalTx, totalRx uint64
+		for _, ni := range netStats {
+			if ni.Name == "lo" || ni.Name == "Loopback" {
+				continue
+			}
+			totalTx += ni.BytesSent
+			totalRx += ni.BytesRecv
+		}
 		now := time.Now()
 
 		if initialized && lastNet != nil {
 			duration := now.Sub(lastTime).Seconds()
 			if duration > 0 {
-				m.NetTx = float64(currentNet.BytesSent-lastNet.BytesSent) / duration
-				m.NetRx = float64(currentNet.BytesRecv-lastNet.BytesRecv) / duration
+				m.NetTx = float64(totalTx-lastNet.BytesSent) / duration
+				m.NetRx = float64(totalRx-lastNet.BytesRecv) / duration
 			}
 		}
 
-		lastNet = currentNet
+		lastNet = &net.IOCountersStat{BytesSent: totalTx, BytesRecv: totalRx}
 		lastTime = now
 		initialized = true
 	}

@@ -5,6 +5,7 @@ import { metrics as m } from './metrics-prom';
 
 const FIFTEEN_SECONDS_MS = 15_000;
 const RETENTION_HOURS = 24;
+const THROTTLE_WINDOW_MS = 15_000;
 
 const lastWriteKey = (vpsId: string) => `metric_last_write:${vpsId}`;
 
@@ -29,7 +30,7 @@ export const writeHistoricalMetric = async (payload: {
     const now = Date.now();
     const key = lastWriteKey(payload.vpsId);
     // F0-11: Atomic acquire. If another writer already owns this slot, skip.
-    const acquired = await redisCache.set(key, now.toString(), 'PX', FIFTEEN_SECONDS_MS * 2, 'NX');
+    const acquired = await redisCache.set(key, now.toString(), 'PX', THROTTLE_WINDOW_MS, 'NX');
     if (acquired !== 'OK') return false;
 
     try {

@@ -18,6 +18,8 @@ jobs:
       REDIS_PORT: "6379"
       JWT_SECRET: test-secret-at-least-32-characters-long-1234
       CORS_ORIGIN: http://localhost:3000
+      ALLOW_CUSTOM_SCRIPTS: "false"
+      NODE_ENV: test
     services:
       postgres:
         image: postgres:15-alpine

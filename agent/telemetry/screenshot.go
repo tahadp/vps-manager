@@ -91,10 +91,14 @@ func captureWithImport() ([]byte, error) {
 	return os.ReadFile(tmpFile)
 }
 
-// IsHeadless ortamın headless olup olmadığını kontrol eder
+// IsHeadless ortamın headless olup olmadığını kontrol eder.
+// On Linux it inspects DISPLAY / WAYLAND_DISPLAY. On Windows the heuristic is
+// an empty SESSIONNAME (services / Server Core / Docker containers), which
+// has no interactive desktop session for screenshot tooling to attach to.
 func IsHeadless() bool {
-	if runtime.GOOS != "linux" {
-		return false
+	if runtime.GOOS == "windows" {
+		sessionName := os.Getenv("SESSIONNAME")
+		return sessionName == "" || sessionName == "Services"
 	}
 	return os.Getenv("DISPLAY") == "" && !strings.Contains(os.Getenv("WAYLAND_DISPLAY"), "wayland")
 }

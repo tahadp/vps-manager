@@ -16,10 +16,9 @@ import FileManager from "@/components/FileManager";
 import ScreenView from "@/components/ScreenView";
 import RefreshButton from "@/components/vps/RefreshButton";
 import { useSocket } from "@/lib/socket";
+import { api, getStoredUser } from "@/lib/api";
 
 type TabKey = "overview" | "terminal" | "files" | "rustdesk" | "performance";
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -128,6 +127,9 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
 
   // Visible charts (from VPS settings) - default to all
   const [visibleCharts, setVisibleCharts] = useState<string[]>(DEFAULT_VISIBLE_CHARTS);
+  // User-level default from /api/settings/preferences (F0-18).
+  const [userDefaultCharts, setUserDefaultCharts] = useState<string[] | null>(null);
+  const [vpsHasExplicitCharts, setVpsHasExplicitCharts] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [editModal, setEditModal] = useState(false);
@@ -141,13 +143,10 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     });
   };
 
-  const fetchChartData = useCallback(async (token: string, rangeMin: number) => {
+  const fetchChartData = useCallback(async (rangeMin: number) => {
     try {
       const hours = Math.max(1, Math.ceil(rangeMin / 60));
-      const res = await fetch(`${API}/api/vps/${id}/metrics?hours=${hours}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const metrics = await res.json();
+      const metrics = await api<any[]>(`/api/vps/${id}/metrics?hours=${hours}`);
       if (Array.isArray(metrics) && metrics.length > 0) {
         const since = Date.now() - rangeMin * 60 * 1000;
         const filtered = metrics.filter((m: any) => new Date(m.timestamp).getTime() >= since);
@@ -166,43 +165,58 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   }, [id]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) { router.push("/login"); return; }
+    const storedUser = getStoredUser();
+    if (!storedUser) { router.push("/login"); return; }
     const tick = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(tick);
   }, [router]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    fetch(`${API}/api/vps/${id}/settings`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then((d: any) => {
-        if (d) {
-          if (d.visibleCharts) {
-            try { setVisibleCharts(JSON.parse(d.visibleCharts)); } catch {}
-          }
+    api<{ chartVisibleMetrics?: string[] }>('/api/settings/preferences')
+      .then((d) => {
+        if (Array.isArray(d?.chartVisibleMetrics) && d.chartVisibleMetrics.length > 0) {
+          setUserDefaultCharts(d.chartVisibleMetrics);
+          if (!vpsHasExplicitCharts) setVisibleCharts(d.chartVisibleMetrics);
         }
       })
       .catch(() => {});
-  }, [id]);
+  }, [vpsHasExplicitCharts]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) { router.push("/login"); return; }
+    api<any>(`/api/vps/${id}/settings`)
+      .then((d) => {
+        if (d && d.visibleCharts) {
+          try {
+            const parsed = JSON.parse(d.visibleCharts);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setVpsHasExplicitCharts(true);
+              setVisibleCharts(parsed);
+              return;
+            }
+          } catch {}
+        }
+        if (userDefaultCharts && userDefaultCharts.length > 0) {
+          setVisibleCharts(userDefaultCharts);
+        }
+      })
+      .catch(() => {
+        if (userDefaultCharts && userDefaultCharts.length > 0) {
+          setVisibleCharts(userDefaultCharts);
+        }
+      });
+  }, [id, userDefaultCharts]);
 
-    fetch(`${API}/api/vps/${id}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => { if (!res.ok) throw new Error("Failed"); return res.json(); })
-    .then(data => {
-      setVps(data);
-      setLoading(false);
-      fetchChartData(token, chartRangeMin);
-    })
-    .catch(() => { setLoading(false); setVps(null); });
+  useEffect(() => {
+    const storedUser = getStoredUser();
+    if (!storedUser) { router.push("/login"); return; }
+
+    api<any>(`/api/vps/${id}`)
+      .then(data => {
+        setVps(data);
+        setLoading(false);
+        fetchChartData(chartRangeMin);
+      })
+      .catch(() => { setLoading(false); setVps(null); });
   }, [id, router, fetchChartData]);
 
   useEffect(() => {
@@ -256,16 +270,13 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   }, [socket, id]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) fetchChartData(token, chartRangeMin);
+    fetchChartData(chartRangeMin);
   }, [chartRangeMin, fetchChartData]);
 
   // 15s periodic chart refresh
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
     const interval = setInterval(() => {
-      fetchChartData(token, chartRangeMin);
+      fetchChartData(chartRangeMin);
     }, 15000);
     return () => clearInterval(interval);
   }, [chartRangeMin, fetchChartData]);
@@ -273,43 +284,31 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const executeAction = async (command: string) => {
     const ok = await showConfirm(`Execute "${command}"?`);
     if (!ok) return;
-    const token = localStorage.getItem("token");
     try {
-      const res = await fetch(`${API}/api/vps/${id}/command`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ command })
+      const data = await api<any>(`/api/vps/${id}/command`, {
+        method: 'POST',
+        json: { command }
       });
-      const data = await res.json();
-      setCmdResult(res.ok
-        ? { type: 'success', message: `"${command}" executed successfully` }
-        : { type: 'error', message: `Failed: ${data.error || "Unknown error"}` }
-      );
-    } catch {
-      setCmdResult({ type: 'error', message: "Failed to execute. Is the VPS online?" });
+      setCmdResult({ type: 'success', message: `"${command}" executed successfully` });
+    } catch (err: any) {
+      setCmdResult({ type: 'error', message: `Failed: ${err?.message || "Unknown error"}` });
     }
     setTimeout(() => setCmdResult(null), 4000);
   };
 
   const handleEditVps = async () => {
-    const token = localStorage.getItem("token");
-    const res = await fetch(`${API}/api/vps/${id}`, {
-      method: "PUT",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(editForm)
+    const updated = await api<any>(`/api/vps/${id}`, {
+      method: 'PUT',
+      json: editForm
     });
-    if (res.ok) {
-      const updated = await res.json();
-      setVps({ ...vps, ...updated });
-      setEditModal(false);
-    }
+    setVps({ ...vps, ...updated });
+    setEditModal(false);
   };
 
   const handleDeleteVps = async () => {
     const ok = await showConfirm("Permanently delete this VPS? This cannot be undone.");
     if (!ok) return;
-    const token = localStorage.getItem("token");
-    await fetch(`${API}/api/vps/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    await api(`/api/vps/${id}`, { method: 'DELETE' });
     router.push('/vps');
   };
 
@@ -332,7 +331,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   }
 
   const isOffline = vps.status !== 'ONLINE';
-  const isAdmin = typeof window !== 'undefined' && JSON.parse(atob(localStorage.getItem('token')?.split('.')[1] || '{}')).role === 'ADMIN';
+  const isAdmin = typeof window !== 'undefined' && (getStoredUser()?.role === 'ADMIN');
 
   const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: "overview", label: "Overview", icon: ImageIcon },

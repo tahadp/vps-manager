@@ -3,9 +3,8 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Bell, Plus, Trash2, Filter, ChevronDown, Server, AlertCircle } from 'lucide-react';
-import io from 'socket.io-client';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { useSocket } from '@/lib/socket';
+import { api, getStoredUser } from '@/lib/api';
 
 const METRIC_OPTIONS = [
   { value: 'CPU', label: 'CPU' },
@@ -35,6 +34,7 @@ export default function GlobalAlertsPage() {
   const [rules, setRules] = useState<any[]>([]);
   const [vpsList, setVpsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { socket } = useSocket();
 
   // Filters
   const [filterVps, setFilterVps] = useState<string>('all');
@@ -57,31 +57,27 @@ export default function GlobalAlertsPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { router.push('/login'); return; }
-    Promise.all([
-      fetch(`${API}/api/rules`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-      fetch(`${API}/api/vps`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
-    ]).then(([rulesData, vpsData]) => {
-      if (Array.isArray(rulesData)) setRules(rulesData);
-      if (Array.isArray(vpsData)) setVpsList(vpsData);
-    }).finally(() => setLoading(false));
+    if (!getStoredUser()) { router.push('/login'); return; }
+    Promise.all([api<any[]>('/api/rules'), api<any[]>('/api/vps')])
+      .then(([rulesData, vpsData]) => {
+        if (Array.isArray(rulesData)) setRules(rulesData);
+        if (Array.isArray(vpsData)) setVpsList(vpsData);
+      })
+      .finally(() => setLoading(false));
   }, [router]);
 
   useEffect(() => {
-    const socket = io(API, { transports: ['websocket'] });
-    socket.on('vps_event', (e: any) => {
+    if (!getStoredUser()) return;
+    const s = socket;
+    if (!s) return;
+    const onEvent = (e: any) => {
       if (e?.type === 'RULES_CHANGED') {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-        fetch(`${API}/api/rules`, { headers: { Authorization: `Bearer ${token}` } })
-          .then(r => r.json())
-          .then(d => { if (Array.isArray(d)) setRules(d); })
-          .catch(() => {});
+        api<any[]>('/api/rules').then(d => { if (Array.isArray(d)) setRules(d); }).catch(() => {});
       }
-    });
-    return () => { socket.disconnect(); };
-  }, []);
+    };
+    s.on('vps_event', onEvent);
+    return () => { s.off('vps_event', onEvent); };
+  }, [socket]);
 
   const filteredRules = rules.filter(r => {
     if (filterVps !== 'all' && r.vpsId !== filterVps && r.vpsId !== null) return false;
@@ -91,7 +87,6 @@ export default function GlobalAlertsPage() {
   });
 
   const addRule = async () => {
-    const token = localStorage.getItem('token');
     const payload: any = { ...newRule };
     if (newRule.metric === 'OFFLINE') {
       payload.metric = undefined;
@@ -100,22 +95,14 @@ export default function GlobalAlertsPage() {
       payload.durationMin = undefined;
     }
     if (!payload.vpsId) payload.vpsId = undefined;
-    const res = await fetch(`${API}/api/rules`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    if (res.ok) {
-      const r = await res.json();
-      setRules([r, ...rules]);
-      setShowForm(false);
-      setNewRule({ vpsId: '', metric: 'CPU', condition: '>', threshold: 90, durationMin: 10, offlineThresholdMin: 5, customMessage: '', restartOnAlert: false, action: 'ALERT', script: '' });
-    }
+    const r = await api<any>('/api/rules', { method: 'POST', json: payload });
+    setRules([r, ...rules]);
+    setShowForm(false);
+    setNewRule({ vpsId: '', metric: 'CPU', condition: '>', threshold: 90, durationMin: 10, offlineThresholdMin: 5, customMessage: '', restartOnAlert: false, action: 'ALERT', script: '' });
   };
 
   const deleteRule = async (ruleId: string) => {
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/api/rules/${ruleId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await api(`/api/rules/${ruleId}`, { method: 'DELETE' });
     setRules(rules.filter(r => r.id !== ruleId));
     setConfirmDelete(null);
   };

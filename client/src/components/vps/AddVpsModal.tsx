@@ -1,15 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Server, Terminal } from 'lucide-react';
 import OsSelect from './OsSelect';
+import { api, getStoredUser } from '@/lib/api';
 
 interface AddVpsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (newVps: any) => void;
 }
+
+const FOCUSABLE_SELECTOR =
+  'input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
   const [loading, setLoading] = useState(false);
@@ -22,6 +26,47 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
   });
 
   const [successData, setSuccessData] = useState<any>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocused = useRef<HTMLElement | null>(null);
+
+  const handleClose = useCallback(() => {
+    setSuccessData(null);
+    setFormData({ name: '', os: 'Windows Server 2022', customOsName: '' });
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previouslyFocused.current = document.activeElement as HTMLElement | null;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        handleClose();
+      } else if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+        ).filter((el) => !el.hasAttribute('aria-hidden'));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey && active === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    firstFocusable?.focus();
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      previouslyFocused.current?.focus();
+    };
+  }, [isOpen, handleClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,12 +74,10 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-
+      const user = getStoredUser();
       const payload: any = {
         name: formData.name,
-        userId: user.id
+        userId: user?.id
       };
       if (formData.os === 'Other') {
         if (!formData.customOsName.trim()) {
@@ -48,40 +91,19 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
         payload.os = formData.os;
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to create VPS');
-      }
-
-      const newVps = await res.json();
+      const newVps = await api<any>('/api/vps', { method: 'POST', json: payload });
       setSuccessData(newVps);
       onSuccess(newVps);
     } catch (err: any) {
-      setError(err.message);
+      setError(err?.message || 'Failed to create VPS');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClose = () => {
-    setSuccessData(null);
-    setFormData({ name: '', os: 'Windows Server 2022', customOsName: '' });
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
+      {isOpen && (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0 }}
@@ -92,13 +114,17 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
         />
 
         <motion.div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-vps-modal-title"
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           className="relative w-full max-w-md bg-neutral-bg1 border border-border-DEFAULT rounded-2xl shadow-2xl overflow-hidden"
         >
           <div className="flex items-center justify-between p-5 border-b border-border-subtle bg-neutral-bg2/50">
-            <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
+            <h2 id="add-vps-modal-title" className="text-lg font-bold text-text-primary flex items-center gap-2">
               <Server className="w-5 h-5 text-brand" />
               {successData ? 'VPS Added Successfully' : 'Add New VPS'}
             </h2>
@@ -184,6 +210,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
           )}
         </motion.div>
       </div>
+      )}
     </AnimatePresence>
   );
 }

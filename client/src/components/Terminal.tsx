@@ -16,7 +16,7 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
   const stateRef = useRef<ConnState>('idle');
   const currentSessionIdRef = useRef<string | null>(null);
   const [state, setState] = useState<ConnState>('idle');
-  const { socket } = useSocket();
+  const { socket, connectionStatus } = useSocket();
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -100,7 +100,13 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
         writeStatus(xterm, 'Connection closed by server.', 'yellow');
       };
       const onShellOutput = (payload: { data: string }) => {
-        try { xterm.write(payload?.data || ''); } catch {}
+        try {
+          if (!payload?.data) return;
+          const decoded = atob(payload.data);
+          const bytes = new Uint8Array(decoded.length);
+          for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+          xterm.write(bytes);
+        } catch {}
       };
       const onShellError = (payload: { error: string }) => {
         setStateAndRef('closed');
@@ -164,6 +170,16 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
         <span className="text-text-muted">{state}</span>
       </div>
       <div ref={terminalRef} className={className || 'w-full h-full pt-6'} />
+      {connectionStatus !== 'connected' && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/70 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-text-primary">
+            <div className="w-3 h-3 rounded-full bg-status-warning animate-pulse" />
+            <span className="text-xs uppercase font-bold tracking-wider text-text-secondary">
+              {connectionStatus === 'reconnecting' ? 'Reconnecting…' : 'Disconnected'}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

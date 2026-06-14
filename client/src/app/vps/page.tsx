@@ -7,8 +7,7 @@ import { useRouter } from 'next/navigation';
 import { AddVpsModal } from '@/components/vps/AddVpsModal';
 import RefreshButton from '@/components/vps/RefreshButton';
 import { useSocket } from '@/lib/socket';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { api, getStoredUser } from '@/lib/api';
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Status' },
@@ -38,19 +37,17 @@ export default function VpsListPage() {
   const subscribedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { router.push('/login'); return; }
-    setUser(JSON.parse(localStorage.getItem('user') || '{}'));
+    const storedUser = getStoredUser();
+    if (!storedUser) { router.push('/login'); return; }
+    setUser(storedUser);
   }, [router]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token || !socket) return;
+    if (!socket) return;
 
     const fetchList = async () => {
       try {
-        const res = await fetch(`${API}/api/vps`, { headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json();
+        const data = await api<any[]>('/api/vps');
         if (Array.isArray(data)) {
           setVpsList(data);
           data.forEach((v: any) => {
@@ -146,7 +143,6 @@ export default function VpsListPage() {
 
   const handleBulkAction = async () => {
     if (!confirmBulk) return;
-    const token = localStorage.getItem('token');
     const { action, message } = confirmBulk;
     setConfirmBulk(null);
     setToast({ type: 'success', message: `Bulk ${action} started for ${selected.length} VPS` });
@@ -160,19 +156,17 @@ export default function VpsListPage() {
           return;
         }
         for (const id of selected) {
-          await fetch(`${API}/api/vps/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+          await api(`/api/vps/${id}`, { method: 'DELETE' });
         }
       } else if (action === 'refresh') {
-        await fetch(`${API}/api/vps/bulk/refresh`, {
+        await api('/api/vps/bulk/refresh', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vpsIds: selected, command: 'refresh' })
+          json: { vpsIds: selected, command: 'refresh' }
         });
       } else {
-        await fetch(`${API}/api/vps/bulk/command`, {
+        await api('/api/vps/bulk/command', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vpsIds: selected, command: action })
+          json: { vpsIds: selected, command: action }
         });
       }
     } catch (err) {
@@ -181,18 +175,16 @@ export default function VpsListPage() {
   };
 
   const executeSingleAction = async (id: string, command: string) => {
-    const token = localStorage.getItem('token');
     if (command === 'refresh') {
       setToast({ type: 'success', message: 'Refresh triggered' });
       setTimeout(() => setToast(null), 3000);
-      await fetch(`${API}/api/vps/${id}/refresh`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      await api(`/api/vps/${id}/refresh`, { method: 'POST' });
       return;
     }
     if (!confirm(`Execute '${command}' on this VPS?`)) return;
-    await fetch(`${API}/api/vps/${id}/command`, {
+    await api(`/api/vps/${id}/command`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command })
+      json: { command }
     });
   };
 
@@ -203,8 +195,7 @@ export default function VpsListPage() {
       return;
     }
     if (!confirm('Delete this VPS permanently?')) return;
-    const token = localStorage.getItem('token');
-    await fetch(`${API}/api/vps/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    await api(`/api/vps/${id}`, { method: 'DELETE' });
     setVpsList(vpsList.filter(v => v.id !== id));
   };
 

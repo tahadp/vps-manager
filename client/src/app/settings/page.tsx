@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Settings as SettingsIcon, MessageCircle, Shield, Bell, Plus, Trash2, Key, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
+import { api, getStoredUser } from "@/lib/api";
 
 const CHART_METRICS = ['cpu', 'ram', 'disk', 'network'] as const;
 type ChartMetric = typeof CHART_METRICS[number];
@@ -31,7 +32,7 @@ export default function Settings() {
     condition: '>',
     threshold: 90,
     durationMin: 10,
-    action: 'NOTIFY_ONLY',
+    action: 'ALERT',
     script: ''
   });
 
@@ -43,111 +44,72 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    if (!storedToken) {
+    if (!getStoredUser()) {
       router.push("/login");
       return;
     }
-    fetchData(storedToken);
+    fetchData();
   }, [router]);
 
-  const fetchData = async (jwt: string) => {
+  const fetchData = async () => {
     try {
-      // Fetch Telegram Settings
-      const resTel = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/telegram`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      if (resTel.ok) {
-        const data = await resTel.json();
-        setToken(data.telegramBotToken || '');
-        setChatId(data.telegramChatId || '');
+      const dataTel = await api<{ telegramBotToken?: string; telegramChatId?: string }>('/api/settings/telegram');
+      setToken(dataTel.telegramBotToken || '');
+      setChatId(dataTel.telegramChatId || '');
+
+      const dataVps = await api<any[]>('/api/vps');
+      setVpsList(dataVps);
+
+      const prefs = await api<{ chartVisibleMetrics?: string[] }>('/api/settings/preferences');
+      if (Array.isArray(prefs.chartVisibleMetrics) && prefs.chartVisibleMetrics.length > 0) {
+        setChartVisibleMetrics(prefs.chartVisibleMetrics as ChartMetric[]);
       }
 
-      // Fetch VPS List
-      const resVps = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      if (resVps.ok) {
-        setVpsList(await resVps.json());
-      }
-
-      // F0-18: Fetch user-level chart preferences
-      const resPrefs = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      if (resPrefs.ok) {
-        const prefs = await resPrefs.json();
-        if (Array.isArray(prefs.chartVisibleMetrics) && prefs.chartVisibleMetrics.length > 0) {
-          setChartVisibleMetrics(prefs.chartVisibleMetrics);
-        }
-      }
-
-      // Fetch Rules
-      fetchRules(jwt);
+      fetchRules();
     } catch (err) {}
     setLoading(false);
   };
 
-  const fetchRules = async (jwt: string) => {
+  const fetchRules = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/rules`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      if (res.ok) {
-        setRules(await res.json());
-      }
+      const data = await api<any[]>('/api/rules');
+      setRules(data);
     } catch (err) {}
   };
 
   const handleSaveTelegram = async () => {
     setTelegramMsg(""); setTelegramError("");
-    const jwt = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/telegram`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`
-        },
-        body: JSON.stringify({ telegramBotToken: token, telegramChatId: chatId })
+      await api('/api/settings/telegram', {
+        method: 'POST',
+        json: { telegramBotToken: token, telegramChatId: chatId }
       });
-      if (res.ok) setTelegramMsg("Telegram configuration saved successfully.");
-      else setTelegramError("Failed to save configuration.");
-    } catch (err) {
-      setTelegramError("An error occurred.");
+      setTelegramMsg("Telegram configuration saved successfully.");
+    } catch (err: any) {
+      setTelegramError(err?.message || "Failed to save configuration.");
     }
   };
 
   const handleTestTelegram = async () => {
     setTelegramMsg(""); setTelegramError("");
-    const jwt = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/telegram/test`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      const data = await res.json();
-      if (res.ok) setTelegramMsg(data.message);
-      else setTelegramError(data.error);
-    } catch (err) {
-      setTelegramError("Failed to send test message.");
+      const data = await api<{ message?: string; error?: string }>('/api/settings/telegram/test', { method: 'POST' });
+      setTelegramMsg(data.message || "Test sent");
+    } catch (err: any) {
+      setTelegramError(err?.message || "Failed to send test message.");
     }
   };
 
-  // F0-18: Save user-level chartVisibleMetrics
   const handleSaveCharts = async () => {
     setChartMsg(""); setChartError("");
-    const jwt = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ chartVisibleMetrics })
+      await api('/api/settings/preferences', {
+        method: 'PUT',
+        json: { chartVisibleMetrics }
       });
-      if (res.ok) setChartMsg("Chart preferences saved.");
-      else setChartError("Failed to save chart preferences.");
-    } catch (err) {
-      setChartError("An error occurred.");
+      setChartMsg("Chart preferences saved.");
+    } catch (err: any) {
+      setChartError(err?.message || "Failed to save chart preferences.");
     }
   };
 
@@ -160,62 +122,34 @@ export default function Settings() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwdMsg(""); setPwdError("");
-    const jwt = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/change-password`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`
-        },
-        body: JSON.stringify({ oldPassword, newPassword })
+      await api('/api/auth/change-password', {
+        method: 'POST',
+        json: { oldPassword, newPassword }
       });
-      const data = await res.json();
-      if (res.ok) {
-        setPwdMsg("Password changed successfully.");
-        setOldPassword("");
-        setNewPassword("");
-      } else {
-        setPwdError(data.error || "Failed to change password.");
-      }
-    } catch (err) {
-      setPwdError("Failed to connect to server.");
+      setPwdMsg("Password changed successfully.");
+      setOldPassword("");
+      setNewPassword("");
+    } catch (err: any) {
+      setPwdError(err?.message || "Failed to change password.");
     }
   };
 
   const handleAddRule = async () => {
-    const jwt = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/rules`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`
-        },
-        body: JSON.stringify(newRule)
-      });
-      if (res.ok) {
-        fetchRules(jwt || "");
-        alert("Rule added successfully.");
-      } else {
-        alert("Failed to add rule.");
-      }
-    } catch (err) {
-      alert("Error adding rule.");
+      await api('/api/rules', { method: 'POST', json: newRule });
+      fetchRules();
+      alert("Rule added successfully.");
+    } catch (err: any) {
+      alert(err?.message || "Error adding rule.");
     }
   };
 
   const handleDeleteRule = async (id: string) => {
     if (!confirm("Delete this rule?")) return;
-    const jwt = localStorage.getItem("token");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/rules/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${jwt}` }
-      });
-      if (res.ok) {
-        fetchRules(jwt || "");
-      }
+      await api(`/api/rules/${id}`, { method: 'DELETE' });
+      fetchRules();
     } catch (err) {}
   };
 
@@ -468,12 +402,13 @@ export default function Settings() {
 
                 <div className="col-span-2 md:col-span-1">
                   <label className="block text-[10px] uppercase font-semibold text-text-muted mb-1.5">Action</label>
-                  <select 
+                  <select
                     className="w-full p-2 bg-neutral-bg2 border border-border-DEFAULT rounded-lg text-sm text-text-primary focus:outline-none focus:border-brand transition-colors"
                     value={newRule.action} onChange={e => setNewRule({...newRule, action: e.target.value})}
                   >
-                    <option value="NOTIFY_ONLY">Notify Only</option>
+                    <option value="ALERT">Notify Only</option>
                     <option value="RESTART">Restart</option>
+                    <option value="ALERT_AND_RESTART">Alert + Restart</option>
                     <option value="CUSTOM_SCRIPT">Custom Script</option>
                   </select>
                 </div>
