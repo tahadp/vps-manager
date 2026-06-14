@@ -12,5 +12,10 @@ ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/proto ./proto
-EXPOSE 5000
+
+# Coolify injects PORT (e.g. 4567) and GRPC_PORT (e.g. 50051) at runtime.
+# EXPOSE documents the ports the container listens on.
+EXPOSE 4567
+EXPOSE 50051
+
 CMD ["node", "dist/index.js"]
