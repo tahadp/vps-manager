@@ -1,0 +1,19 @@
+# Default owner for everything
+* @tahatoprak
+
+# Agent (Go) needs a Go reviewer
+/agent/ @tahatoprak
+
+# Server (Node) needs a Node reviewer
+/server/ @tahatoprak
+
+# Client (Next.js) needs a frontend reviewer
+/client/ @tahatoprak
+
+# Security-sensitive files
+/server/src/middlewares/authMiddleware.ts @tahatoprak
+/server/src/routes/auth.ts @tahatoprak
+/server/src/middlewares/validation.ts @tahatoprak
+/proto/ @tahatoprak
+/.env.example @tahatoprak
+/server/.example.env @tahatoprak
