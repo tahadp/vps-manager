@@ -93,6 +93,12 @@ const PORT = process.env.PORT || 5000;
 const GRPC_PORT = parseInt(process.env.GRPC_PORT || '50051', 10);
 const server = http.createServer(app);
 
+import { isAgentOnline } from './agentDispatcher';
+
+app.get('/api/debug/agent-status/:id', (req, res) => {
+  res.json({ vpsId: req.params.id, isOnline: isAgentOnline(req.params.id) });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'vps-management-server' });
 });
