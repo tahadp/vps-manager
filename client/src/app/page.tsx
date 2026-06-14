@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Server, Cpu, MemoryStick, Activity,
-  Power, PowerOff, RefreshCw, Eye, AlertCircle, Play, GripHorizontal, RefreshCcw
+  PowerOff, RefreshCw, Eye, AlertCircle, GripHorizontal, RefreshCcw
 } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -12,6 +12,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { AddVpsModal } from '@/components/vps/AddVpsModal';
 import RefreshButton from '@/components/vps/RefreshButton';
 import { useSocket } from '@/lib/socket';
+import { api, getStoredUser, setStoredUser } from '@/lib/api';
 
 function SortableVpsCard(props: any) {
   const { vps, isSelected, m, screenshots, toggleSelect, router } = props;
@@ -161,18 +162,11 @@ function SortableVpsCard(props: any) {
 
 const executeCommand = async (vpsId: string, command: string) => {
   if (!confirm(`Execute '${command}' on server?`)) return;
-  const token = localStorage.getItem("token");
   if (command === 'refresh') {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${vpsId}/refresh`, {
-      method: "POST", headers: { Authorization: `Bearer ${token}` }
-    });
+    await api(`/api/vps/${vpsId}/refresh`, { method: 'POST' });
     return;
   }
-  await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${vpsId}/command`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ command })
-  });
+  await api(`/api/vps/${vpsId}/command`, { method: 'POST', json: { command } });
 };
 
 export default function Dashboard() {
@@ -193,33 +187,24 @@ export default function Dashboard() {
   const subscribedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    const storedUser = localStorage.getItem("user");
-
-    if (!token) { router.push("/login"); return; }
-    setUser(JSON.parse(storedUser || '{}'));
+    const storedUser = getStoredUser();
+    if (!storedUser) { router.push("/login"); return; }
+    setUser(storedUser);
   }, [router]);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token || !socket) return;
+    if (!socket) return;
 
     const fetchVpsList = async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+        const data = await api<any[]>('/api/vps');
         if (!Array.isArray(data)) return;
 
-        const prefsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
         let order: string[] = [];
-        if (prefsRes.ok) {
-          const prefs = await prefsRes.json();
-          if (Array.isArray(prefs.dashboardVpsOrder)) order = prefs.dashboardVpsOrder;
-        }
+        try {
+          const prefs = await api<{ dashboardVpsOrder?: string[] }>('/api/settings/preferences');
+          if (Array.isArray(prefs?.dashboardVpsOrder)) order = prefs.dashboardVpsOrder;
+        } catch { /* ignore */ }
 
         const sorted = [...data].sort((a, b) => {
           const ai = order.indexOf(a.id);
@@ -290,14 +275,12 @@ export default function Dashboard() {
   }, [socket]);
 
   const persistOrder = (newList: any[]) => {
-    const token = localStorage.getItem('token');
     const ids = newList.map(v => v.id);
     if (savePrefsTimeout.current) clearTimeout(savePrefsTimeout.current);
     savePrefsTimeout.current = setTimeout(() => {
-      fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/settings/preferences`, {
+      api('/api/settings/preferences', {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dashboardVpsOrder: ids })
+        json: { dashboardVpsOrder: ids }
       }).catch(() => {});
     }, 500);
   };
@@ -312,25 +295,20 @@ export default function Dashboard() {
     setToast({ type: 'success', message: `Bulk ${action} started for ${selectedVps.length} VPS` });
     setSelectedVps([]);
     setTimeout(() => setToast(null), 3000);
-    const token = localStorage.getItem("token");
     try {
       if (action === 'delete') {
         for (const id of selectedVps) {
-          await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/${id}`, {
-            method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
-          });
+          await api(`/api/vps/${id}`, { method: 'DELETE' });
         }
       } else if (action === 'refresh') {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/bulk/refresh`, {
+        await api('/api/vps/bulk/refresh', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vpsIds: selectedVps, command: 'refresh' })
+          json: { vpsIds: selectedVps, command: 'refresh' }
         });
       } else {
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/vps/bulk/command`, {
+        await api('/api/vps/bulk/command', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vpsIds: selectedVps, command: action })
+          json: { vpsIds: selectedVps, command: action }
         });
       }
     } catch {}

@@ -3,8 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { ArrowLeft, History } from 'lucide-react';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { api, getStoredUser } from '@/lib/api';
 
 function formatTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
@@ -17,11 +16,9 @@ export default function VpsAuditPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { router.push('/login'); return; }
-    fetch(`${API}/api/audit?vpsId=${id}&take=100`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { if (d.data) setLogs(d.data.filter((l: any) => l.target?.includes(id))); })
+    if (!getStoredUser()) { router.push('/login'); return; }
+    api<{ data?: any[] } | any[]>(`/api/audit?vpsId=${id}&take=100`)
+      .then(d => { if (d && (d as any).data) setLogs((d as any).data.filter((l: any) => l.target?.includes(id))); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id, router]);

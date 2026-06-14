@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { AppShell } from "../components/layout/AppShell";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,7 +34,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.classList.add(t);document.documentElement.style.colorScheme=t}else{var d=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.classList.add(d);document.documentElement.style.colorScheme=d}}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.classList.add(t);document.documentElement.style.colorScheme=t}else{var d=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.classList.add(d);document.documentElement.style.colorScheme=d}localStorage.removeItem('token')}catch(e){}})()`,
           }}
         />
       </head>
@@ -45,7 +46,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AppShell>
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </AppShell>
         </ThemeProvider>
       </body>

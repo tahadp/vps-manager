@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { api, getStoredUser } from "@/lib/api";
 
 export default function AuditLogs() {
   const router = useRouter();
@@ -12,23 +13,18 @@ export default function AuditLogs() {
   const itemsPerPage = 10;
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
+    if (!getStoredUser()) {
       router.push("/login");
       return;
     }
-    fetchLogs(token);
+    fetchLogs();
   }, [router]);
 
-  const fetchLogs = async (token: string) => {
+  const fetchLogs = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/audit`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setLogs(json.data || json);
-      }
+      const json = await api<{ data?: any[] } | any[]>('/api/audit');
+      const data = Array.isArray(json) ? json : (json.data || []);
+      setLogs(data);
     } catch (err) {}
     setLoading(false);
   };

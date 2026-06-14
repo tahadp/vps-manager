@@ -4,8 +4,7 @@ import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Save, Settings as SettingsIcon, Cpu, MemoryStick, HardDrive, Network, MessageCircle, Bell } from 'lucide-react';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+import { api, getStoredUser } from '@/lib/api';
 
 const CHART_OPTIONS = [
   { key: 'cpu', label: 'CPU', icon: Cpu },
@@ -32,11 +31,9 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { router.push('/login'); return; }
-    fetch(`${API}/api/vps/${id}/settings`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.ok ? r.json() : null)
-      .then((d: any) => {
+    if (!getStoredUser()) { router.push('/login'); return; }
+    api<any>(`/api/vps/${id}/settings`)
+      .then((d) => {
         if (d) {
           setSettings({
             screenshotIntervalSec: d.screenshotIntervalSec ?? 30,
@@ -63,21 +60,14 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
 
   const save = async () => {
     setSaving(true); setMsg(null);
-    const token = localStorage.getItem('token');
     try {
-      const res = await fetch(`${API}/api/vps/${id}/settings`, {
+      await api(`/api/vps/${id}/settings`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        json: settings
       });
-      if (res.ok) {
-        setMsg({ type: 'success', message: 'Settings saved. Agent will pick them up within 10s.' });
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setMsg({ type: 'error', message: data.error || 'Failed to save' });
-      }
-    } catch {
-      setMsg({ type: 'error', message: 'Network error' });
+      setMsg({ type: 'success', message: 'Settings saved. Agent will pick them up within 10s.' });
+    } catch (err: any) {
+      setMsg({ type: 'error', message: err?.message || 'Failed to save' });
     }
     setSaving(false);
     setTimeout(() => setMsg(null), 4000);
