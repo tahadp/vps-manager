@@ -146,7 +146,7 @@ export function resolveAgentResponse(msg: any) {
   const pending = pendingRequests.get(msg.request_id);
   if (!pending) {
     // shell_output gibi fire-and-forget mesajlar için yoksay
-    if (msg.body && (msg.body.shell_output || msg.body.shell_opened || msg.body.shell_closed || msg.body.file_op_result)) {
+    if (msg.body === 'shell_output' || msg.body === 'shell_opened' || msg.body === 'shell_closed' || msg.body === 'file_op_result') {
       return;
     }
     logger.warn({ requestId: msg.request_id }, '[agentIO] no pending request');

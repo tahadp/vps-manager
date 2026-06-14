@@ -15,7 +15,7 @@ export async function execOnAgent(vpsId: string, command: string, timeoutSeconds
     request_id: requestId,
     exec: { vps_id: vpsId, command, timeout_seconds: timeoutSeconds }
   }), EXEC_TIMEOUT_MS);
-  const body = resp.body?.exec_result;
+  const body = resp.exec_result;
   return { success: !!body?.success, output: body?.output || '' };
 }
 
@@ -24,7 +24,7 @@ export async function listDirOnAgent(vpsId: string, path: string): Promise<{ suc
     request_id: requestId,
     listdir: { vps_id: vpsId, path }
   }), LISTDIR_TIMEOUT_MS);
-  const body = resp.body?.listdir_result;
+  const body = resp.listdir_result;
   return {
     success: !!body?.success,
     files: (body?.files || []).map((f: any) => ({ name: f.name, isDir: f.is_dir, size: Number(f.size) })),
@@ -37,7 +37,7 @@ export async function readFileFromAgent(vpsId: string, path: string): Promise<{ 
     request_id: requestId,
     read: { vps_id: vpsId, path }
   }), READ_TIMEOUT_MS);
-  const body = resp.body?.read_result;
+  const body = resp.read_result;
   let content: Buffer = Buffer.alloc(0);
   if (body?.content) {
     if (Buffer.isBuffer(body.content)) content = body.content;
@@ -52,7 +52,7 @@ export async function writeFileToAgent(vpsId: string, path: string, content: Buf
     request_id: requestId,
     write: { vps_id: vpsId, path, content }
   }), WRITE_TIMEOUT_MS);
-  const body = resp.body?.write_result;
+  const body = resp.write_result;
   return { success: !!body?.success, error: body?.error || undefined };
 }
 
@@ -61,7 +61,7 @@ export async function deleteFileOnAgent(vpsId: string, path: string): Promise<{ 
     request_id: requestId,
     delete_file: { vps_id: vpsId, request_id: requestId, path }
   }), FILE_OP_TIMEOUT_MS);
-  const body = resp.body?.file_op_result;
+  const body = resp.file_op_result;
   return { success: !!body?.success, error: body?.error || undefined };
 }
 
@@ -70,7 +70,7 @@ export async function mkdirOnAgent(vpsId: string, path: string): Promise<{ succe
     request_id: requestId,
     mkdir: { vps_id: vpsId, request_id: requestId, path }
   }), FILE_OP_TIMEOUT_MS);
-  const body = resp.body?.file_op_result;
+  const body = resp.file_op_result;
   return { success: !!body?.success, error: body?.error || undefined };
 }
 
@@ -79,7 +79,7 @@ export async function renameFileOnAgent(vpsId: string, oldPath: string, newPath:
     request_id: requestId,
     rename_file: { vps_id: vpsId, request_id: requestId, old_path: oldPath, new_path: newPath }
   }), FILE_OP_TIMEOUT_MS);
-  const body = resp.body?.file_op_result;
+  const body = resp.file_op_result;
   return { success: !!body?.success, error: body?.error || undefined };
 }
 
@@ -94,7 +94,7 @@ export async function refreshAgent(vpsId: string): Promise<{ success: boolean; m
     request_id: requestId,
     refresh: { vps_id: vpsId }
   }), REFRESH_TIMEOUT_MS);
-  return { success: !!resp.body?.refresh_ack?.success, message: resp.body?.refresh_ack?.message };
+  return { success: !!resp.refresh_ack?.success, message: resp.refresh_ack?.message };
 }
 
 export interface ShellSession {
@@ -130,7 +130,7 @@ export async function openShellOnAgent(vpsId: string, shell: string): Promise<Sh
     request_id: requestId,
     shell_open: { session_id: sessionId, vps_id: vpsId, shell }
   }), SHELL_OPEN_TIMEOUT_MS);
-  const body = resp.body?.shell_opened;
+  const body = resp.shell_opened;
   if (!body?.success) {
     throw new Error(body?.error || 'Failed to open shell');
   }

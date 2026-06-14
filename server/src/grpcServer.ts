@@ -201,8 +201,8 @@ server.addService(vpsPackage.BackendService.service, {
           return;
         }
         if (!msg) return;
-        if (msg.body && msg.body.register) {
-          const req = msg.body.register;
+        if (msg.body === 'register' && msg.register) {
+          const req = msg.register;
           if (req.agent_ip) {
             await prisma.vps.update({
               where: { id: boundVpsId },
@@ -220,8 +220,8 @@ server.addService(vpsPackage.BackendService.service, {
           }
           return;
         }
-        if (msg.body && msg.body.shell_output) {
-          const out = msg.body.shell_output;
+        if (msg.body === 'shell_output' && msg.shell_output) {
+          const out = msg.shell_output;
           const sessionId = out.session_id;
           const data = out.data;
           if (sessionId && data) {
@@ -230,7 +230,7 @@ server.addService(vpsPackage.BackendService.service, {
           }
           return;
         }
-        if (msg.body && (msg.body.shell_opened || msg.body.shell_closed)) {
+        if (msg.body === 'shell_opened' || msg.body === 'shell_closed') {
           return;
         }
         resolveAgentResponse(msg);
