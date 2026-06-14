@@ -3,6 +3,7 @@ import * as protoLoader from '@grpc/proto-loader';
 import path from 'path';
 import { redisPublisher, redisCache } from './redis';
 import { logger } from './logger';
+import { metrics as m } from './metrics-prom';
 
 const PROTO_PATH = path.join(__dirname, '../proto/vps.proto');
 
@@ -47,8 +48,12 @@ const checkApiKey = async (call: any, callback?: any) => {
 
 server.addService(vpsPackage.BackendService.service, {
   StreamTelemetry: async (call: any) => {
-    if (!(await checkApiKey(call))) return;
+    if (!(await checkApiKey(call))) {
+      m.grpcCallsTotal.inc({ method: 'StreamTelemetry', status: 'error' });
+      return;
+    }
     call.on('data', (request: any) => {
+      m.telemetryFramesTotal.inc();
       redisPublisher.publish(`telemetry:${request.vps_id}`, JSON.stringify({
         vpsId: request.vps_id,
         CPUUsage: request.cpu_usage,
@@ -64,18 +69,28 @@ server.addService(vpsPackage.BackendService.service, {
     call.on('end', () => {
       call.end();
     });
+    call.on('error', () => {
+      m.grpcCallsTotal.inc({ method: 'StreamTelemetry', status: 'error' });
+    });
   },
   UploadScreenshot: async (call: any, callback: any) => {
-    if (!(await checkApiKey(call, callback))) return;
+    if (!(await checkApiKey(call, callback))) {
+      m.grpcCallsTotal.inc({ method: 'UploadScreenshot', status: 'error' });
+      return;
+    }
     redisPublisher.publish(`screenshot:${call.request.vps_id}`, JSON.stringify({
       vpsId: call.request.vps_id,
       imageData: call.request.image_data.toString('base64')
     }));
     await redisCache.hset('vps_latest_screenshots', call.request.vps_id, call.request.image_data.toString('base64'));
+    m.grpcCallsTotal.inc({ method: 'UploadScreenshot', status: 'ok' });
     callback(null, { success: true });
   },
   Heartbeat: async (call: any, callback: any) => {
-    if (!(await checkApiKey(call, callback))) return;
+    if (!(await checkApiKey(call, callback))) {
+      m.grpcCallsTotal.inc({ method: 'Heartbeat', status: 'error' });
+      return;
+    }
     try {
       const peer = call.getPeer();
       const peerIp = peer.split(':')[0] || 'Unknown';
@@ -130,6 +145,8 @@ server.addService(vpsPackage.BackendService.service, {
         ipAddress: agentIp
       }));
 
+      m.grpcCallsTotal.inc({ method: 'Heartbeat', status: 'ok' });
+
       if (settingsMessage) {
         callback(null, { success: true, settings: settingsMessage });
       } else {
@@ -137,6 +154,7 @@ server.addService(vpsPackage.BackendService.service, {
       }
     } catch (err) {
       logger.error({ err }, 'Heartbeat update failed');
+      m.grpcCallsTotal.inc({ method: 'Heartbeat', status: 'error' });
       callback(null, { success: false });
     }
   },
@@ -155,6 +173,7 @@ server.addService(vpsPackage.BackendService.service, {
             authChecked = true;
             return true;
           }
+          m.grpcCallsTotal.inc({ method: 'StreamAgentIO', status: 'error' });
           return false;
         })();
       }
@@ -208,11 +227,13 @@ server.addService(vpsPackage.BackendService.service, {
     });
 
     call.on('end', () => {
+      m.grpcCallsTotal.inc({ method: 'StreamAgentIO', status: 'ok' });
       if (boundVpsId) unregisterAgentStream(boundVpsId, call);
       try { call.end(); } catch {}
     });
 
     call.on('error', (err: any) => {
+      m.grpcCallsTotal.inc({ method: 'StreamAgentIO', status: 'error' });
       if (boundVpsId) unregisterAgentStream(boundVpsId, call);
       logger.error({ err: err?.message || err, vpsId: boundVpsId }, 'StreamAgentIO stream error');
     });

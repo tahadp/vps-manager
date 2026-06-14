@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { redisCache } from './redis';
 import { logger } from './logger';
+import { metrics as m } from './metrics-prom';
 
 const FIFTEEN_SECONDS_MS = 15_000;
 const RETENTION_HOURS = 24;
@@ -44,6 +45,7 @@ export const writeHistoricalMetric = async (payload: {
           timestamp: payload.timestamp ? new Date(payload.timestamp * 1000) : new Date()
         }
       });
+      m.historicalMetricWrites.inc();
       return true;
     } catch (dbErr) {
       // Release the slot so the next attempt can write

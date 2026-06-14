@@ -5,6 +5,7 @@ import { execOnAgent } from './agentCommands';
 import { writeHistoricalMetric } from './metrics';
 import { io } from './socket';
 import { logger } from './logger';
+import { metrics as m } from './metrics-prom';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
@@ -276,6 +277,7 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
       message: baseMsg,
       timestamp: Date.now()
     });
+    m.alertFirings.inc({ metric: context.metric, action: 'ALERT' });
   }
 
   if (shouldRunCustom) {
@@ -286,6 +288,7 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
       try {
         const timeout = rule.timeoutSeconds ?? 30;
         await execOnAgent(vps.id, rule.customScript, timeout);
+        m.alertFirings.inc({ metric: context.metric, action: 'CUSTOM_SCRIPT' });
       } catch (cmdErr) {
         logger.error({ err: cmdErr, vpsId: vps.id, ruleId: rule.id }, 'Failed to execute custom script');
       }
@@ -295,6 +298,7 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
     const cmd = vps.os === 'WINDOWS' ? 'shutdown /r /t 0' : 'reboot';
     try {
       await execOnAgent(vps.id, cmd);
+      m.alertFirings.inc({ metric: context.metric, action: 'RESTART' });
     } catch (cmdErr) {
       logger.error({ err: cmdErr, vpsId: vps.id }, 'Failed to execute restart');
     }

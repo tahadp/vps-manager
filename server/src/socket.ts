@@ -5,6 +5,7 @@ import { prisma } from './prisma';
 import jwt from 'jsonwebtoken';
 import { openShellOnAgent, sendShellInput, closeShellOnAgent, getShellSession } from './agentCommands';
 import { logger } from './logger';
+import { metrics as m } from './metrics-prom';
 
 const JWT_SECRET = process.env.JWT_SECRET as string;
 
@@ -38,6 +39,7 @@ export const initWebSocket = (server: http.Server) => {
   });
 
   io.on('connection', (socket: any) => {
+    m.socketIoConnections.inc();
     logger.info({ socketId: socket.id, user: socket.data.user?.email }, 'Client connected');
 
     // Per-user room for live notification push (F0-2)
@@ -107,6 +109,7 @@ export const initWebSocket = (server: http.Server) => {
     });
 
     socket.on('disconnect', () => {
+      m.socketIoConnections.dec();
       logger.info({ socketId: socket.id }, 'Client disconnected');
       for (const sessionId of activeSessions.keys()) {
         closeShellOnAgent(sessionId).catch(() => {});

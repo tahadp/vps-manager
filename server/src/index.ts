@@ -19,6 +19,7 @@ import { authLimiter, apiLimiter } from './middlewares/rateLimit';
 import { prisma } from './prisma';
 import { redisCache } from './redis';
 import { logger } from './logger';
+import { metricsHandler, metrics as m } from './metrics-prom';
 
 dotenv.config({ path: '../.env' });
 
@@ -58,6 +59,18 @@ app.use(helmet({
   hsts: process.env.NODE_ENV === 'production' ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
 }));
 
+// HTTP request metrics (after helmet/cors, before routes)
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const route = (req.route?.path as string) || req.path.replace(/[0-9a-f-]{20,}/gi, ':id');
+    const duration = Number(process.hrtime.bigint() - start) / 1e9;
+    m.httpRequestsTotal.inc({ method: req.method, route, status: String(res.statusCode) });
+    m.httpRequestDurationSeconds.observe({ method: req.method, route, status: String(res.statusCode) }, duration);
+  });
+  next();
+});
+
 // Rate limiting
 app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/vps', apiLimiter, vpsRouter);
@@ -66,6 +79,9 @@ app.use('/api/settings', apiLimiter, settingsRouter);
 app.use('/api/audit', apiLimiter, auditRouter);
 app.use('/api/rules', apiLimiter, rulesRouter);
 app.use('/api/notifications', apiLimiter, notificationsRouter);
+
+// F6-1: Prometheus /metrics endpoint (no auth, not rate-limited — internal scrape only)
+app.get('/metrics', metricsHandler);
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
