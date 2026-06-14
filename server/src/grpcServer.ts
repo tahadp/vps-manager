@@ -119,27 +119,32 @@ server.addService(vpsPackage.BackendService.service, {
 
       let settingsMessage: any = null;
       try {
-        // F0-15: Cache to avoid upsert round-trip every heartbeat
-        const existing = settingsCache.has(call.authenticatedVpsId);
-        let settings = existing
-          ? await prisma.vpsSettings.findUnique({ where: { vpsId: call.authenticatedVpsId } })
-          : null;
+        let settings = await prisma.vpsSettings.findUnique({ where: { vpsId: call.authenticatedVpsId } });
         if (!settings) {
-          settings = await prisma.vpsSettings.create({
-            data: {
-              vpsId: call.authenticatedVpsId,
-              screenshotIntervalSec: 30,
-              telemetryIntervalSec: 1,
-              ramDiskVisible: true,
-              networkVisible: true
+          try {
+            settings = await prisma.vpsSettings.create({
+              data: {
+                vpsId: call.authenticatedVpsId,
+                screenshotIntervalSec: 30,
+                telemetryIntervalSec: 1,
+                ramDiskVisible: true,
+                networkVisible: true
+              }
+            });
+          } catch (createErr: any) {
+            if (createErr.code === 'P2002') {
+              settings = await prisma.vpsSettings.findUnique({ where: { vpsId: call.authenticatedVpsId } });
+            } else {
+              throw createErr;
             }
-          });
-          settingsCache.add(call.authenticatedVpsId);
+          }
         }
-        settingsMessage = {
-          screenshotIntervalSec: settings.screenshotIntervalSec,
-          telemetryIntervalSec: settings.telemetryIntervalSec
-        };
+        if (settings) {
+          settingsMessage = {
+            screenshotIntervalSec: settings.screenshotIntervalSec,
+            telemetryIntervalSec: settings.telemetryIntervalSec
+          };
+        }
       } catch (settingsErr) {
         logger.error({ err: settingsErr }, 'Settings load failed (using defaults)');
       }
