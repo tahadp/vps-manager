@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,7 +68,8 @@ func CollectMetrics() (*Metrics, error) {
 	if err == nil {
 		var totalTx, totalRx uint64
 		for _, ni := range netStats {
-			if ni.Name == "lo" || ni.Name == "Loopback" {
+			nameLower := strings.ToLower(ni.Name)
+			if nameLower == "lo" || strings.Contains(nameLower, "loopback") {
 				continue
 			}
 			totalTx += ni.BytesSent

@@ -43,7 +43,7 @@ export const writeHistoricalMetric = async (payload: {
           netTx: round2(payload.netTx || 0),
           netRx: round2(payload.netRx || 0),
           diskTotal: round2(payload.diskTotal || 0),
-          timestamp: payload.timestamp ? new Date(payload.timestamp * 1000) : new Date()
+          timestamp: payload.timestamp ? new Date(Number(payload.timestamp) * 1000) : new Date()
         }
       });
       m.historicalMetricWrites.inc();

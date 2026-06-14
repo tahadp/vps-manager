@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 import { execOnAgent, listDirOnAgent, readFileFromAgent, writeFileToAgent, refreshAgent, deleteFileOnAgent, mkdirOnAgent, renameFileOnAgent } from '../agentCommands';
-import { redisPublisher } from '../redis';
+import { redisPublisher, redisCache } from '../redis';
 import { OsType } from '@prisma/client';
 import { validate, validateQuery, validateParams, schemas, safeFilePathSchema } from '../middlewares/validation';
 import { logAudit } from '../middlewares/audit';
@@ -99,7 +99,8 @@ vpsRouter.get('/:id', requireAuth, validateParams(idParamSchema), async (req: Au
     if (req.user!.role !== 'ADMIN' && vps.userId !== req.user!.id) {
       return res.status(403).json({ error: 'Access denied' });
     }
-    res.json(vps);
+    const latestScreenshot = await redisCache.hget('vps_latest_screenshots', req.params.id as string);
+    res.json({ ...vps, latestScreenshot });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch VPS' });
   }
@@ -340,7 +341,7 @@ vpsRouter.get('/:id/metrics', requireAuth, validateParams(idParamSchema), valida
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const hours = (req.query.hours as any) || 24;
+    const hours = parseInt(req.query.hours as string, 10) || 24;
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
     const metrics = await prisma.historicalMetric.findMany({
       where: { vpsId, timestamp: { gte: since } },

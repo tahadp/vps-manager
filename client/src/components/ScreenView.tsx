@@ -18,25 +18,33 @@ export default function ScreenView({ vpsId, imageData, isOffline, className }: S
         className={`relative cursor-pointer group overflow-hidden ${className || 'w-full h-36 bg-black/50 border-y border-border-subtle flex items-center justify-center'}`}
         onClick={() => imageData && setExpanded(true)}
       >
-        {isOffline ? (
-          <div className="flex flex-col items-center text-status-error/70 gap-2">
-            <WifiOff className="w-7 h-7" />
-            <span className="text-sm font-medium">Server is offline</span>
-            <span className="text-[10px] text-text-muted">Last screenshot will appear when server is back online</span>
-          </div>
-        ) : imageData ? (
+        {imageData ? (
           <React.Fragment key={imageData.slice(0, 32)}>
             <img
               src={`data:image/jpeg;base64,${imageData}`}
               alt="VPS Screenshot"
-              className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+              className={`w-full h-full object-cover transition-all duration-500 ${isOffline ? 'opacity-30 grayscale' : 'opacity-70 group-hover:opacity-100 group-hover:scale-105'}`}
               loading="lazy"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
-            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Maximize2 className="w-4 h-4 text-white/80" />
-            </div>
+            {isOffline ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-status-error/90 gap-1 bg-black/40 backdrop-blur-[1px]">
+                <WifiOff className="w-7 h-7 animate-pulse" />
+                <span className="text-sm font-semibold uppercase tracking-wider">Server is Offline</span>
+                <span className="text-[10px] text-text-muted">Showing last captured screenshot</span>
+              </div>
+            ) : (
+              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Maximize2 className="w-4 h-4 text-white/80" />
+              </div>
+            )}
           </React.Fragment>
+        ) : isOffline ? (
+          <div className="flex flex-col items-center text-status-error/70 gap-2">
+            <WifiOff className="w-7 h-7" />
+            <span className="text-sm font-medium">Server is offline</span>
+            <span className="text-[10px] text-text-muted">No screenshot cache available</span>
+          </div>
         ) : (
           <div className="flex flex-col items-center text-text-muted/50 gap-2">
             <TerminalSquare className="w-6 h-6 animate-pulse" />

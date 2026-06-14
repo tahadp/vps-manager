@@ -93,7 +93,17 @@ server.addService(vpsPackage.BackendService.service, {
     }
     try {
       const peer = call.getPeer();
-      const peerIp = peer.split(':')[0] || 'Unknown';
+      const parts = peer.split(':');
+      let peerIp = 'Unknown';
+      if (parts.length >= 2) {
+        if (parts[0] === 'ipv4' || parts[0] === 'ipv6') {
+          peerIp = parts[1].replace(/[\[\]]/g, '');
+        } else {
+          peerIp = parts[0].replace(/[\[\]]/g, '');
+        }
+      } else {
+        peerIp = peer;
+      }
       const agentIp = (call.request && call.request.agent_ip) || peerIp;
       const now = new Date();
 

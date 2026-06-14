@@ -76,7 +76,7 @@ app.use((req, res, next) => {
 });
 
 // Rate limiting + CSRF
-app.use('/api/auth', authLimiter, authRouter);
+app.use('/api/auth', requireCsrf, authLimiter, authRouter);
 app.use('/api/vps', requireCsrf, apiLimiter, vpsRouter);
 app.use('/api/admin', requireCsrf, apiLimiter, adminRouter);
 app.use('/api/settings', requireCsrf, apiLimiter, settingsRouter);

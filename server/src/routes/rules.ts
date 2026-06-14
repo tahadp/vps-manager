@@ -38,7 +38,7 @@ router.post('/', requireAuth, validate(schemas.createRule), async (req: any, res
   try {
     const {
       vpsId, metric, condition, threshold, durationMin,
-      offlineThresholdMin, customMessage, restartOnAlert, action, script
+      offlineThresholdMin, customMessage, restartOnAlert, action, script, timeoutSeconds
     } = req.body;
 
     if (vpsId) {
@@ -62,7 +62,8 @@ router.post('/', requireAuth, validate(schemas.createRule), async (req: any, res
         customMessage: customMessage || null,
         restartOnAlert: !!restartOnAlert,
         action,
-        customScript: action === 'CUSTOM_SCRIPT' ? script : null
+        customScript: action === 'CUSTOM_SCRIPT' ? script : null,
+        timeoutSeconds: timeoutSeconds !== undefined ? timeoutSeconds : undefined
       }
     });
 
@@ -84,7 +85,7 @@ router.put('/:id', requireAuth, validate(schemas.createRule), async (req: any, r
 
     const {
       vpsId, metric, condition, threshold, durationMin,
-      offlineThresholdMin, customMessage, restartOnAlert, action, script
+      offlineThresholdMin, customMessage, restartOnAlert, action, script, timeoutSeconds
     } = req.body;
 
     const updated = await prisma.alertRule.update({
@@ -99,7 +100,8 @@ router.put('/:id', requireAuth, validate(schemas.createRule), async (req: any, r
         customMessage: customMessage || null,
         restartOnAlert: !!restartOnAlert,
         action,
-        customScript: action === 'CUSTOM_SCRIPT' ? script : null
+        customScript: action === 'CUSTOM_SCRIPT' ? script : null,
+        timeoutSeconds: timeoutSeconds !== undefined ? timeoutSeconds : null
       }
     });
 

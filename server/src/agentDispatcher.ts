@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import { logger } from './logger';
+import { prisma } from './prisma';
+import { redisPublisher } from './redis';
 
 type ServerWritableStream = any;
 
@@ -47,6 +49,21 @@ export function registerAgentStream(vpsId: string, stream: ServerWritableStream)
   }
   streamMap.set(vpsId, stream);
   logger.info({ vpsId, total: streamMap.size }, '[agentIO] stream registered');
+
+  // Set status to ONLINE immediately on registration
+  prisma.vps.update({
+    where: { id: vpsId },
+    data: { status: 'ONLINE' }
+  }).then((vps) => {
+    redisPublisher.publish(`vps_status:${vpsId}`, JSON.stringify({
+      vpsId,
+      status: 'ONLINE',
+      lastHeartbeat: vps.lastHeartbeat,
+      ipAddress: vps.ipAddress
+    }));
+  }).catch(err => {
+    logger.error({ err, vpsId }, 'Failed to set VPS ONLINE on stream register');
+  });
 }
 
 export function unregisterAgentStream(vpsId: string, stream: ServerWritableStream) {
@@ -55,6 +72,21 @@ export function unregisterAgentStream(vpsId: string, stream: ServerWritableStrea
     heartbeatMap.delete(vpsId);
     rejectAllForVps(vpsId, 'Agent stream disconnected');
     logger.info({ vpsId, total: streamMap.size }, '[agentIO] stream unregistered');
+
+    // Set status to OFFLINE immediately on disconnect
+    prisma.vps.update({
+      where: { id: vpsId },
+      data: { status: 'OFFLINE' }
+    }).then((vps) => {
+      redisPublisher.publish(`vps_status:${vpsId}`, JSON.stringify({
+        vpsId,
+        status: 'OFFLINE',
+        lastHeartbeat: vps.lastHeartbeat,
+        ipAddress: vps.ipAddress
+      }));
+    }).catch(err => {
+      logger.error({ err, vpsId }, 'Failed to set VPS OFFLINE on stream unregister');
+    });
   }
 }
 

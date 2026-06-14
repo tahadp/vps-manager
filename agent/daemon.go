@@ -6,16 +6,18 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	pb "agent/pb"
 	"agent/telemetry"
 
-	"github.com/creack/pty"
 	"github.com/kardianos/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -50,19 +52,44 @@ func applySettings(s *pb.VpsSettingsMessage) {
     log.Printf("Settings applied: telemetry=%v screenshot=%v", settings.telemetryInterval, settings.screenshotInterval)
 }
 
+func getLocalOutboundIP() string {
+	conn, err := net.DialTimeout("udp", "8.8.8.8:80", 2*time.Second)
+	if err != nil {
+		log.Printf("getLocalOutboundIP: dial failed: %v", err)
+		return ""
+	}
+	defer conn.Close()
+	localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
+	if !ok {
+		log.Printf("getLocalOutboundIP: unexpected LocalAddr type %T", conn.LocalAddr())
+		return ""
+	}
+	return localAddr.IP.String()
+}
+
 func getOutboundIP() string {
-    conn, err := net.DialTimeout("udp", "8.8.8.8:80", 2*time.Second)
-    if err != nil {
-        log.Printf("getOutboundIP: dial failed: %v", err)
-        return ""
-    }
-    defer conn.Close()
-    localAddr, ok := conn.LocalAddr().(*net.UDPAddr)
-    if !ok {
-        log.Printf("getOutboundIP: unexpected LocalAddr type %T", conn.LocalAddr())
-        return ""
-    }
-    return localAddr.IP.String()
+	// Try fetching public IP first
+	client := http.Client{
+		Timeout: 2 * time.Second,
+	}
+	urls := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+	}
+	for _, url := range urls {
+		resp, err := client.Get(url)
+		if err == nil {
+			defer resp.Body.Close()
+			bytes, err := io.ReadAll(resp.Body)
+			if err == nil {
+				ip := strings.TrimSpace(string(bytes))
+				if net.ParseIP(ip) != nil {
+					return ip
+				}
+			}
+		}
+	}
+	return getLocalOutboundIP()
 }
 
 // validateVpsId rejects empty/missing/oversized VPS IDs at the handler entry
@@ -117,10 +144,22 @@ type program struct {
     ipMu    sync.Mutex
 }
 
-type shellSession struct {
-	id   string
-	ptmx *os.File
-	cmd  *exec.Cmd
+func toLocalPath(p string) string {
+	if runtime.GOOS != "windows" {
+		return p
+	}
+	if p == "" || p == "/" {
+		return "C:\\"
+	}
+	if len(p) >= 3 && p[0] == '/' && ((p[1] >= 'a' && p[1] <= 'z') || (p[1] >= 'A' && p[1] <= 'Z')) && p[2] == '/' {
+		drive := string(p[1])
+		rest := filepath.FromSlash(p[2:])
+		return drive + ":" + rest
+	}
+	if len(p) == 2 && p[0] == '/' && ((p[1] >= 'a' && p[1] <= 'z') || (p[1] >= 'A' && p[1] <= 'Z')) {
+		return string(p[1]) + ":\\"
+	}
+	return "C:" + filepath.FromSlash(p)
 }
 
 func newProgram() *program {
@@ -354,6 +393,8 @@ func (p *program) telemetryLoop(backendClient pb.BackendServiceClient) {
             select {
             case <-p.ctx.Done():
                 return
+            case <-p.refreshTelemetryCh:
+                p.sendTelemetryImmediate()
             case <-time.After(interval):
             }
         }
@@ -368,11 +409,7 @@ func (p *program) screenshotLoop(backendClient pb.BackendServiceClient) {
 		default:
 		}
 
-		select {
-		case <-p.refreshScreenshotCh:
-			p.captureAndUpload(backendClient)
-		default:
-		}
+		p.captureAndUpload(backendClient)
 
 		settings.mu.RLock()
 		interval := settings.screenshotInterval
@@ -381,10 +418,10 @@ func (p *program) screenshotLoop(backendClient pb.BackendServiceClient) {
 		select {
 		case <-p.ctx.Done():
 			return
+		case <-p.refreshScreenshotCh:
+			// Trigger immediate screenshot upload on refresh request
 		case <-time.After(interval):
 		}
-
-		p.captureAndUpload(backendClient)
 	}
 }
 
@@ -573,7 +610,7 @@ func (p *program) handleListdir(stream pb.BackendService_StreamAgentIOClient, re
 		})
 		return
 	}
-	entries, err := os.ReadDir(req.Path)
+	entries, err := os.ReadDir(toLocalPath(req.Path))
 	if err != nil {
 		_ = stream.Send(&pb.AgentMessage{
 			RequestId: requestId,
@@ -614,7 +651,7 @@ func (p *program) handleRead(stream pb.BackendService_StreamAgentIOClient, reque
 		})
 		return
 	}
-	data, err := os.ReadFile(req.Path)
+	data, err := os.ReadFile(toLocalPath(req.Path))
 	if err != nil {
 		_ = stream.Send(&pb.AgentMessage{
 			RequestId: requestId,
@@ -642,7 +679,7 @@ func (p *program) handleWrite(stream pb.BackendService_StreamAgentIOClient, requ
 		})
 		return
 	}
-	err := os.WriteFile(req.Path, req.Content, 0600)
+	err := os.WriteFile(toLocalPath(req.Path), req.Content, 0600)
 	resp := &pb.WriteResponse{Success: err == nil}
 	if err != nil {
 		resp.Error = err.Error()
@@ -693,8 +730,7 @@ func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, 
 			shell = "bash"
 		}
 	}
-	cmd := exec.Command(shell)
-	ptmx, err := pty.Start(cmd)
+	sess, err := startShell(shell)
 	if err != nil {
 		_ = stream.Send(&pb.AgentMessage{
 			RequestId: requestId,
@@ -705,8 +741,9 @@ func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, 
 		return
 	}
 
+	sess.id = req.SessionId
 	p.shellsMu.Lock()
-	p.shells[req.SessionId] = &shellSession{id: req.SessionId, ptmx: ptmx, cmd: cmd}
+	p.shells[req.SessionId] = sess
 	p.shellsMu.Unlock()
 
 	_ = stream.Send(&pb.AgentMessage{
@@ -716,15 +753,15 @@ func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, 
 		},
 	})
 
-	go p.pumpShellOutput(stream, req.SessionId, ptmx)
+	go p.pumpShellOutput(stream, req.SessionId, sess)
 }
 
-func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, sessionId string, ptmx *os.File) {
+func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, sessionId string, sess *shellSession) {
 	buf := make([]byte, 4096)
 	readErrCh := make(chan error, 1)
 	go func() {
 		for {
-			n, err := ptmx.Read(buf)
+			n, err := sess.Read(buf)
 			if n > 0 {
 				if !p.sendIO(&pb.AgentMessage{
 					Body: &pb.AgentMessage_ShellOutput{
@@ -743,7 +780,7 @@ func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, 
 	}()
 	select {
 	case <-p.ctx.Done():
-		_ = ptmx.Close()
+		_ = sess.Close()
 		p.cleanupShell(sessionId)
 		return
 	case err := <-readErrCh:
@@ -761,7 +798,7 @@ func (p *program) handleShellInput(req *pb.ShellInputRequest) {
 	if sess == nil {
 		return
 	}
-	_, _ = sess.ptmx.Write(req.Data)
+	_, _ = sess.Write(req.Data)
 }
 
 func (p *program) handleShellClose(stream pb.BackendService_StreamAgentIOClient, req *pb.ShellCloseRequest) {
@@ -783,7 +820,7 @@ func (p *program) cleanupShell(sessionId string) {
 	if sess == nil {
 		return
 	}
-	_ = sess.ptmx.Close()
+	_ = sess.Close()
 	if sess.cmd != nil && sess.cmd.Process != nil {
 		_ = sess.cmd.Process.Kill()
 		_, _ = sess.cmd.Process.Wait()
@@ -825,7 +862,7 @@ func (p *program) handleDeleteFile(stream pb.BackendService_StreamAgentIOClient,
 		p.sendFileOpResult(stream, requestId, fmt.Errorf("invalid vps_id: %w", err))
 		return
 	}
-	if err := os.Remove(req.GetPath()); err != nil {
+	if err := os.Remove(toLocalPath(req.GetPath())); err != nil {
 		log.Printf("DeleteFile failed: %v", err)
 		p.sendFileOpResult(stream, requestId, err)
 		return
@@ -838,7 +875,7 @@ func (p *program) handleMkdir(stream pb.BackendService_StreamAgentIOClient, requ
 		p.sendFileOpResult(stream, requestId, fmt.Errorf("invalid vps_id: %w", err))
 		return
 	}
-	if err := os.MkdirAll(req.GetPath(), 0755); err != nil {
+	if err := os.MkdirAll(toLocalPath(req.GetPath()), 0755); err != nil {
 		log.Printf("Mkdir failed: %v", err)
 		p.sendFileOpResult(stream, requestId, err)
 		return
@@ -851,7 +888,7 @@ func (p *program) handleRenameFile(stream pb.BackendService_StreamAgentIOClient,
 		p.sendFileOpResult(stream, requestId, fmt.Errorf("invalid vps_id: %w", err))
 		return
 	}
-	if err := os.Rename(req.GetOldPath(), req.GetNewPath()); err != nil {
+	if err := os.Rename(toLocalPath(req.GetOldPath()), toLocalPath(req.GetNewPath())); err != nil {
 		log.Printf("RenameFile failed: %v", err)
 		p.sendFileOpResult(stream, requestId, err)
 		return

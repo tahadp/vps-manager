@@ -25,6 +25,9 @@ export function AppShell({ children }: AppShellProps) {
       setAuthenticated(false);
       return;
     }
+    if (authenticated === true) {
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -38,7 +41,7 @@ export function AppShell({ children }: AppShellProps) {
       }
     })();
     return () => { cancelled = true; };
-  }, [pathname, router]);
+  }, [pathname, router, authenticated]);
 
   useEffect(() => {
     if (sidebarOpen) setSidebarOpen(false);

@@ -74,37 +74,46 @@ function ChartPanel({ title, unit, color, dataKey, chartData, secondDataKey, sec
   secondLabel?: string;
   mainLabel?: string;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div className="bg-neutral-bg2/40 border border-border-subtle rounded-xl p-3 flex flex-col min-h-[180px]">
       <div className="text-xs font-semibold text-text-muted mb-1">{title}</div>
       <div className="flex-1 min-h-[150px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 5, right: 16, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border-subtle" vertical={false} />
-            <XAxis dataKey="time" stroke="currentColor" className="text-text-muted" fontSize={10} tickLine={false} axisLine={false} minTickGap={32} />
-            <YAxis
-              stroke="currentColor"
-              className="text-text-muted"
-              fontSize={10}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(v) => Number(v).toFixed(2)}
-              unit={unit === '%' ? '%' : ''}
-              domain={unit === '%' ? [0, 100] : ['auto', 'auto']}
-              allowDataOverflow={false}
-              width={56}
-            />
-            <Tooltip
-              contentStyle={{ backgroundColor: 'var(--color-bg-2)', borderColor: 'var(--color-border-default)', borderRadius: '8px', color: 'var(--color-text-primary)' }}
-              itemStyle={{ color: 'var(--color-text-primary)' }}
-              formatter={(v: any) => Number(v).toFixed(2)}
-            />
-            <Line type="monotone" dataKey={dataKey} name={mainLabel || title} stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
-            {secondDataKey && secondColor && (
-              <Line type="monotone" dataKey={secondDataKey} name={secondLabel || ''} stroke={secondColor} strokeWidth={2} dot={false} isAnimationActive={false} />
-            )}
-          </LineChart>
-        </ResponsiveContainer>
+        {mounted ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 5, right: 16, bottom: 5, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-border-subtle" vertical={false} />
+              <XAxis dataKey="time" stroke="currentColor" className="text-text-muted" fontSize={10} tickLine={false} axisLine={false} minTickGap={32} />
+              <YAxis
+                stroke="currentColor"
+                className="text-text-muted"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => Number(v).toFixed(2)}
+                unit={unit === '%' ? '%' : ''}
+                domain={unit === '%' ? [0, 100] : ['auto', 'auto']}
+                allowDataOverflow={false}
+                width={56}
+              />
+              <Tooltip
+                contentStyle={{ backgroundColor: 'var(--color-bg-2)', borderColor: 'var(--color-border-default)', borderRadius: '8px', color: 'var(--color-text-primary)' }}
+                itemStyle={{ color: 'var(--color-text-primary)' }}
+                formatter={(v: any) => Number(v).toFixed(2)}
+              />
+              <Line type="monotone" dataKey={dataKey} name={mainLabel || title} stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
+              {secondDataKey && secondColor && (
+                <Line type="monotone" dataKey={secondDataKey} name={secondLabel || ''} stroke={secondColor} strokeWidth={2} dot={false} isAnimationActive={false} />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-full flex items-center justify-center text-text-muted text-xs">Loading chart…</div>
+        )}
       </div>
     </div>
   );
@@ -213,6 +222,9 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     api<any>(`/api/vps/${id}`)
       .then(data => {
         setVps(data);
+        if (data.latestScreenshot) {
+          setScreenshot(data.latestScreenshot);
+        }
         setLoading(false);
         fetchChartData(chartRangeMin);
       })
@@ -485,8 +497,9 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                   <h3 className="text-xs font-bold tracking-wider uppercase text-text-muted mb-3 flex items-center gap-2"><Activity className="w-3.5 h-3.5" /> Status</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between"><span className="text-text-muted">Status</span><span className={`font-medium ${vps.status === 'ONLINE' ? 'text-status-success' : vps.status === 'MAINTENANCE' ? 'text-status-warning' : 'text-status-error'}`}>{vps.status}</span></div>
+                    <div className="flex justify-between"><span className="text-text-muted">Agent Tunnel</span><span className={`flex items-center gap-1 ${vps.status === 'ONLINE' ? 'text-status-success' : 'text-status-error'}`}>{vps.status === 'ONLINE' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{vps.status === 'ONLINE' ? 'Connected' : 'Disconnected'}</span></div>
+                    <div className="flex justify-between"><span className="text-text-muted">Web Console</span><span className={`flex items-center gap-1 ${socketStatus === 'connected' ? 'text-status-success' : socketStatus === 'error' ? 'text-status-error' : 'text-status-warning'}`}>{socketStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{socketStatus === 'connected' ? 'Connected' : socketStatus === 'error' ? 'Error' : 'Connecting'}</span></div>
                     <div className="flex justify-between"><span className="text-text-muted">Last Heartbeat</span><span className="text-text-primary font-mono text-xs flex items-center gap-1"><Clock className="w-3 h-3" />{formatTimeAgo(vps.lastHeartbeat, now)}</span></div>
-                    <div className="flex justify-between"><span className="text-text-muted">Socket</span><span className={`flex items-center gap-1 ${socketStatus === 'connected' ? 'text-status-success' : socketStatus === 'error' ? 'text-status-error' : 'text-status-warning'}`}>{socketStatus === 'connected' ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}{socketStatus}</span></div>
                   </div>
                 </div>
 
