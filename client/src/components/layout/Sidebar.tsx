@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Server, Settings, ShieldAlert, LogOut, Bell } from 'lucide-react';
+import { LayoutDashboard, Server, Settings, ShieldAlert, LogOut, Bell, Shield } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -22,6 +22,17 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u?.role === 'ADMIN') setIsAdmin(true);
+      }
+    } catch {}
+  }, []);
 
   return (
     <aside className="glass-panel w-64 h-full flex flex-col justify-between p-4 flex-shrink-0">
@@ -64,6 +75,28 @@ export function Sidebar() {
               </Link>
             );
           })}
+
+          {isAdmin && (
+            <Link href="/admin" className="relative block">
+              {(pathname === '/admin' || pathname.startsWith('/admin')) && (
+                <motion.div
+                  layoutId="active-nav"
+                  className="absolute inset-0 bg-brand-subtle rounded-lg border border-brand/20"
+                  initial={false}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                />
+              )}
+              <div className={cn(
+                "relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                (pathname === '/admin' || pathname.startsWith('/admin'))
+                  ? "text-brand-light"
+                  : "text-text-secondary hover:text-text-primary hover:bg-white/5"
+              )}>
+                <Shield className="w-5 h-5" />
+                Admin
+              </div>
+            </Link>
+          )}
         </nav>
       </div>
 

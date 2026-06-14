@@ -30,6 +30,13 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.classList.add(t);document.documentElement.style.colorScheme=t}else{var d=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.classList.add(d);document.documentElement.style.colorScheme=d}}catch(e){}})()`,
+          }}
+        />
+      </head>
       <body className="min-h-full">
         <ThemeProvider
           attribute="class"
