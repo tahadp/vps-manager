@@ -9,13 +9,33 @@ import { metrics as m } from './metrics-prom';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
+    // F1-8: honor 429 backoff window
+    const backoffKey = `tg_backoff:${userId}`;
+    if (await redisCache.get(backoffKey)) {
+      logger.debug({ userId }, 'Telegram alert skipped: in 429 backoff');
+      return;
+    }
+
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.telegramBotToken || !user.telegramChatId) return;
 
-    await axios.post(`https://api.telegram.org/bot${user.telegramBotToken}/sendMessage`, {
-      chat_id: user.telegramChatId,
-      text: message,
-    });
+    try {
+      const res = await axios.post(`https://api.telegram.org/bot${user.telegramBotToken}/sendMessage`, {
+        chat_id: user.telegramChatId,
+        text: message,
+      }, { timeout: 5000 });
+      if (res.status === 429) {
+        await redisCache.set(backoffKey, '1', 'EX', 60);
+        logger.warn({ userId }, 'Telegram 429: backoff 60s');
+      }
+    } catch (sendErr) {
+      if (axios.isAxiosError(sendErr) && sendErr.response?.status === 429) {
+        await redisCache.set(backoffKey, '1', 'EX', 60);
+        logger.warn({ userId }, 'Telegram 429: backoff 60s');
+      } else {
+        throw sendErr;
+      }
+    }
   } catch (error) {
     logger.error({ err: error, userId }, 'Telegram notification failed for user');
   }
@@ -286,8 +306,9 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
       logger.warn({ vpsId: vps.id, ruleId: rule.id }, '[alert] Custom script blocked (ALLOW_CUSTOM_SCRIPTS!=true)');
     } else {
       try {
-        const timeout = rule.timeoutSeconds ?? 30;
-        await execOnAgent(vps.id, rule.customScript, timeout);
+        // F0-13: per-rule custom script timeout (schema default 30s, override via createRule.timeoutSeconds)
+        const timeoutSec = rule.timeoutSeconds ?? 30;
+        await execOnAgent(vps.id, rule.customScript, timeoutSec);
         m.alertFirings.inc({ metric: context.metric, action: 'CUSTOM_SCRIPT' });
       } catch (cmdErr) {
         logger.error({ err: cmdErr, vpsId: vps.id, ruleId: rule.id }, 'Failed to execute custom script');

@@ -12,6 +12,37 @@ const JWT_SECRET = process.env.JWT_SECRET as string;
 let io: Server;
 export { io };
 
+// F1-3-style in-memory sliding window for subscribe_vps events (DB-DoS guard)
+const subscribeVpsRateLimit = new Map<string, number[]>();
+const SUBSCRIBE_VPS_WINDOW_MS = 60_000;
+const SUBSCRIBE_VPS_MAX = 30;
+
+function checkSubscribeRate(userId: string): boolean {
+  const now = Date.now();
+  const timestamps = subscribeVpsRateLimit.get(userId) || [];
+  const recent = timestamps.filter((t) => now - t < SUBSCRIBE_VPS_WINDOW_MS);
+  if (recent.length >= SUBSCRIBE_VPS_MAX) {
+    subscribeVpsRateLimit.set(userId, recent);
+    return false;
+  }
+  recent.push(now);
+  subscribeVpsRateLimit.set(userId, recent);
+  return true;
+}
+
+// Prune stale rate-limit entries every 5 minutes to bound memory growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [userId, timestamps] of subscribeVpsRateLimit.entries()) {
+    const recent = timestamps.filter((t) => now - t < SUBSCRIBE_VPS_WINDOW_MS);
+    if (recent.length === 0) {
+      subscribeVpsRateLimit.delete(userId);
+    } else if (recent.length !== timestamps.length) {
+      subscribeVpsRateLimit.set(userId, recent);
+    }
+  }
+}, 5 * 60_000).unref();
+
 const getCorsOrigins = (): string[] => {
   const raw = process.env.CORS_ORIGIN || 'http://localhost:3000';
   return raw.split(',').map(s => s.trim()).filter(Boolean);
@@ -26,12 +57,37 @@ export const initWebSocket = (server: http.Server) => {
     transports: ['websocket', 'polling']
   });
 
-  io.use((socket: any, next: any) => {
-    const token = socket.handshake.auth.token;
-    if (!token) return next(new Error('Authentication error'));
+  io.use(async (socket: any, next: any) => {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as any;
-      socket.data.user = decoded;
+      const authToken: string | undefined = socket.handshake.auth?.token;
+      const cookieHeader: string = socket.handshake.headers?.cookie || '';
+      const cookieToken = cookieHeader
+        .split(';')
+        .map((c) => c.trim())
+        .find((c) => c.startsWith('auth-token='))
+        ?.slice('auth-token='.length);
+
+      const token = authToken || (cookieToken ? decodeURIComponent(cookieToken) : undefined);
+      if (!token) return next(new Error('Authentication error'));
+
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as any;
+      if (!decoded?.id) return next(new Error('Authentication error'));
+
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, email: true, role: true, status: true, tokenVersion: true }
+      });
+      if (!user) return next(new Error('Authentication error'));
+      if (user.status !== 'APPROVED') return next(new Error('Account not approved'));
+      if (typeof decoded.tv === 'number' && decoded.tv !== user.tokenVersion) {
+        return next(new Error('Token revoked'));
+      }
+
+      socket.data.user = {
+        id: user.id,
+        email: user.email,
+        role: user.role
+      };
       next();
     } catch (err) {
       next(new Error('Authentication error'));
@@ -52,6 +108,10 @@ export const initWebSocket = (server: http.Server) => {
     socket.on('subscribe_vps', async (vpsId: string) => {
       try {
         const user = socket.data.user;
+        if (!checkSubscribeRate(user.id)) {
+          socket.emit('error', { message: 'Rate limit exceeded for subscribe_vps' });
+          return;
+        }
         if (user.role !== 'ADMIN') {
           const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
           if (!vps || vps.userId !== user.id) {
@@ -123,32 +183,36 @@ export const initWebSocket = (server: http.Server) => {
   });
 
   redisSubscriber.on('pmessage', (pattern: any, channel: any, message: any) => {
-    if (pattern === 'telemetry:*') {
-      const vpsId = channel.split(':')[1];
-      io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
-    } else if (pattern === 'screenshot:*') {
-      const vpsId = channel.split(':')[1];
-      io.to(`vps_${vpsId}`).emit('screenshot_update', JSON.parse(message));
-    } else if (pattern === 'vps_status:*') {
-      const vpsId = channel.split(':')[1];
-      const payload = JSON.parse(message);
-      io.to(`vps_${vpsId}`).emit('vps_status_update', payload);
-      io.to('vps_list').emit('vps_event', { type: 'STATUS_CHANGED', ...payload });
-    } else if (pattern === 'vps_event:*') {
-      const payload = JSON.parse(message);
-      io.to('vps_list').emit('vps_event', payload);
-    } else if (pattern === 'shell:output:*') {
-      const sessionId = channel.split(':')[2];
-      const payload = JSON.parse(message);
-      io.to(`shell:${sessionId}`).emit('shell:output', {
-        sessionId,
-        data: Buffer.from(payload.data, 'base64').toString('utf-8')
-      });
-    } else if (pattern === 'notifications:user:*') {
-      // F0-2: Live notification push to the specific user's room
-      const userId = channel.split(':')[1];
-      const payload = JSON.parse(message);
-      io.to(`user:${userId}`).emit('notification', payload);
+    try {
+      if (pattern === 'telemetry:*') {
+        const vpsId = channel.split(':')[1];
+        io.to(`vps_${vpsId}`).emit('telemetry_update', JSON.parse(message));
+      } else if (pattern === 'screenshot:*') {
+        const vpsId = channel.split(':')[1];
+        io.to(`vps_${vpsId}`).emit('screenshot_update', JSON.parse(message));
+      } else if (pattern === 'vps_status:*') {
+        const vpsId = channel.split(':')[1];
+        const payload = JSON.parse(message);
+        io.to(`vps_${vpsId}`).emit('vps_status_update', payload);
+        io.to('vps_list').emit('vps_event', { type: 'STATUS_CHANGED', ...payload });
+      } else if (pattern === 'vps_event:*') {
+        const payload = JSON.parse(message);
+        io.to('vps_list').emit('vps_event', payload);
+      } else if (pattern === 'shell:output:*') {
+        const sessionId = channel.split(':')[2];
+        const payload = JSON.parse(message);
+        io.to(`shell:${sessionId}`).emit('shell:output', {
+          sessionId,
+          data: payload.data
+        });
+      } else if (pattern === 'notifications:user:*') {
+        // F0-2: Live notification push to the specific user's room
+        const userId = channel.split(':')[1];
+        const payload = JSON.parse(message);
+        io.to(`user:${userId}`).emit('notification', payload);
+      }
+    } catch (err) {
+      logger.error({ err, pattern, channel }, 'Socket pmessage handler failed');
     }
   });
 };

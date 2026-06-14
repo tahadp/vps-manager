@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z, ZodSchema } from 'zod';
+import * as path from 'path';
 
 function sanitizeString(str: string): string {
   return str
@@ -97,6 +98,22 @@ const passwordComplexity = z.string()
   .refine((v: string) => /[A-Z]/.test(v), 'Password must contain an uppercase letter')
   .refine((v: string) => /[0-9]/.test(v), 'Password must contain a digit');
 
+// Absolute path validator: blocks shell metacharacters, traversal, and sensitive dirs
+export const safeFilePathSchema = z.string()
+  .min(1)
+  .max(1000)
+  .regex(/^\/[a-zA-Z0-9_./\- ]+$/, 'Path contains illegal characters')
+  .refine((p: string) => !p.includes('..'), 'Path traversal detected')
+  .refine((p: string) => {
+    const normalized = path.posix.normalize(p);
+    return !normalized.startsWith('/proc') &&
+           !normalized.startsWith('/sys') &&
+           !normalized.startsWith('/dev') &&
+           !normalized.includes('/etc/shadow') &&
+           !normalized.includes('/etc/passwd') &&
+           !normalized.includes('/etc/sudoers');
+  }, 'Access to system directories is denied');
+
 export const schemas = {
   register: z.object({
     email: z.string().email(),
@@ -154,7 +171,8 @@ export const schemas = {
     customMessage: z.string().max(2000).optional(),
     restartOnAlert: z.boolean().optional(),
     action: z.enum(['ALERT', 'RESTART', 'CUSTOM_SCRIPT', 'ALERT_AND_RESTART', 'NOTIFY_ONLY']),
-    script: z.string().max(5000).optional()
+    script: z.string().max(5000).optional(),
+    timeoutSeconds: z.number().int().min(1).max(3600).optional()
   }).refine((data: any) => {
     // OFFLINE rules: no metric threshold required, but offlineThresholdMin is
     if (data.metric === 'OFFLINE' || data.metric === undefined) {
@@ -165,16 +183,30 @@ export const schemas = {
   }, { message: 'Invalid rule configuration: metric rules need threshold+duration; offline rules need offlineThresholdMin' }),
 
   readFile: z.object({
-    path: z.string().min(1).max(1000)
+    path: safeFilePathSchema
   }),
 
   writeFile: z.object({
-    path: z.string().min(1).max(1000),
+    path: safeFilePathSchema,
     content: z.string().max(10000000)
   }),
 
   listDirectory: z.object({
-    path: z.string().min(1).max(1000)
+    path: safeFilePathSchema
+  }),
+
+  createFile: z.object({
+    path: safeFilePathSchema,
+    type: z.enum(['file', 'directory']).default('file')
+  }),
+
+  renameFile: z.object({
+    oldPath: safeFilePathSchema,
+    newPath: safeFilePathSchema
+  }),
+
+  deleteFile: z.object({
+    path: safeFilePathSchema
   }),
 
   approveUser: z.object({

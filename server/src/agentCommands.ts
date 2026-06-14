@@ -8,6 +8,7 @@ const WRITE_TIMEOUT_MS = 15_000;
 const LISTDIR_TIMEOUT_MS = 15_000;
 const REFRESH_TIMEOUT_MS = 10_000;
 const SHELL_OPEN_TIMEOUT_MS = 10_000;
+const FILE_OP_TIMEOUT_MS = 10_000;
 
 export async function execOnAgent(vpsId: string, command: string, timeoutSeconds = 30): Promise<{ success: boolean; output: string }> {
   const resp = await requestAgent<any>(vpsId, (requestId) => ({
@@ -52,6 +53,33 @@ export async function writeFileToAgent(vpsId: string, path: string, content: Buf
     write: { vps_id: vpsId, path, content }
   }), WRITE_TIMEOUT_MS);
   const body = resp.body?.write_result;
+  return { success: !!body?.success, error: body?.error || undefined };
+}
+
+export async function deleteFileOnAgent(vpsId: string, path: string): Promise<{ success: boolean; error?: string }> {
+  const resp = await requestAgent<any>(vpsId, (requestId) => ({
+    request_id: requestId,
+    delete_file: { vps_id: vpsId, request_id: requestId, path }
+  }), FILE_OP_TIMEOUT_MS);
+  const body = resp.body?.file_op_result;
+  return { success: !!body?.success, error: body?.error || undefined };
+}
+
+export async function mkdirOnAgent(vpsId: string, path: string): Promise<{ success: boolean; error?: string }> {
+  const resp = await requestAgent<any>(vpsId, (requestId) => ({
+    request_id: requestId,
+    mkdir: { vps_id: vpsId, request_id: requestId, path }
+  }), FILE_OP_TIMEOUT_MS);
+  const body = resp.body?.file_op_result;
+  return { success: !!body?.success, error: body?.error || undefined };
+}
+
+export async function renameFileOnAgent(vpsId: string, oldPath: string, newPath: string): Promise<{ success: boolean; error?: string }> {
+  const resp = await requestAgent<any>(vpsId, (requestId) => ({
+    request_id: requestId,
+    rename_file: { vps_id: vpsId, request_id: requestId, old_path: oldPath, new_path: newPath }
+  }), FILE_OP_TIMEOUT_MS);
+  const body = resp.body?.file_op_result;
   return { success: !!body?.success, error: body?.error || undefined };
 }
 

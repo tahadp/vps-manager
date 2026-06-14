@@ -128,9 +128,7 @@ server.addService(vpsPackage.BackendService.service, {
         }
         settingsMessage = {
           screenshotIntervalSec: settings.screenshotIntervalSec,
-          telemetryIntervalSec: settings.telemetryIntervalSec,
-          ramDiskVisible: settings.ramDiskVisible,
-          networkVisible: settings.networkVisible
+          telemetryIntervalSec: settings.telemetryIntervalSec
         };
       } catch (settingsErr) {
         logger.error({ err: settingsErr }, 'Settings load failed (using defaults)');
@@ -245,7 +243,7 @@ server.addService(vpsPackage.BackendService.service, {
 });
 
 export const startGrpcServer = () => {
-  const GRPC_PORT = process.env.GRPC_PORT || 50051;
+  const GRPC_PORT = parseInt(process.env.GRPC_PORT || '50051', 10);
   server.bindAsync(
     `0.0.0.0:${GRPC_PORT}`,
     grpc.ServerCredentials.createInsecure(),

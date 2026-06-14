@@ -7,5 +7,3 @@ export const logger = pino({
     options: { colorize: true, translateTime: 'HH:MM:ss.l' }
   } : undefined,
 });
-
-export const reqLogger = (reqId: string) => logger.child({ reqId });

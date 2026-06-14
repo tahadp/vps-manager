@@ -8,8 +8,8 @@ auditRouter.use(requireAuth);
 
 auditRouter.get('/', async (req: AuthRequest, res) => {
   try {
-    const skip = parseInt(req.query.skip as string) || 0;
-    const take = parseInt(req.query.take as string) || 100;
+    const skip = Math.max(0, parseInt(req.query.skip as string) || 0);
+    const take = Math.min(parseInt(req.query.take as string) || 100, 500);
     const vpsId = req.query.vpsId as string | undefined;
 
     let logs;

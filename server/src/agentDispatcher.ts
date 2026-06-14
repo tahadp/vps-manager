@@ -114,7 +114,7 @@ export function resolveAgentResponse(msg: any) {
   const pending = pendingRequests.get(msg.request_id);
   if (!pending) {
     // shell_output gibi fire-and-forget mesajlar için yoksay
-    if (msg.body && (msg.body.shell_output || msg.body.shell_opened || msg.body.shell_closed)) {
+    if (msg.body && (msg.body.shell_output || msg.body.shell_opened || msg.body.shell_closed || msg.body.file_op_result)) {
       return;
     }
     logger.warn({ requestId: msg.request_id }, '[agentIO] no pending request');
@@ -125,8 +125,31 @@ export function resolveAgentResponse(msg: any) {
   pending.resolve(msg);
 }
 
-export function getConnectedVpsIds(): string[] {
-  return Array.from(streamMap.keys());
+export function sendSettingsUpdate(vpsId: string, settings: {
+  screenshotIntervalSec: number;
+  telemetryIntervalSec: number;
+  ramDiskVisible?: boolean;
+  networkVisible?: boolean;
+  telegramEnabled?: boolean;
+  customAlertMessage?: string | null;
+  visibleCharts?: string[];
+}): boolean {
+  const visibleCharts = settings.visibleCharts ?? [];
+  return sendToAgent(vpsId, {
+    request_id: '',
+    settings_update: {
+      vps_id: vpsId,
+      settings: {
+        screenshot_interval_sec: settings.screenshotIntervalSec,
+        telemetry_interval_sec: settings.telemetryIntervalSec,
+        ram_disk_visible: settings.ramDiskVisible ?? true,
+        network_visible: settings.networkVisible ?? true,
+        telegram_enabled: settings.telegramEnabled ?? true,
+        custom_alert_message: settings.customAlertMessage ?? '',
+        visible_charts: visibleCharts
+      }
+    }
+  });
 }
 
 export type ShellOutputHandler = (sessionId: string, data: Buffer) => void;
