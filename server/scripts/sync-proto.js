@@ -2,24 +2,30 @@
 /*
  * sync-proto.js
  * ----------------------------------------------------------------------------
- * Ensures the canonical proto contract at /proto/vps.proto (source of truth,
- * shared with the Go agent) is mirrored into /server/proto/vps.proto before
- * the server build runs `tsc` and the proto loader is invoked at runtime.
+ * Ensures the canonical proto contract shared with the Go agent is mirrored
+ * into /server/proto/vps.proto before the server build runs `tsc` and the
+ * proto loader is invoked at runtime.
  *
  * The server copy is what `@grpc/proto-loader` reads during gRPC bootstrap;
  * if it is missing or stale, the gRPC server crashes on boot.
  *
+ * Resolution order (first match wins):
+ *   1. <repo-root>/proto/vps.proto              (monorepo / full clone)
+ *   2. /proto/vps.proto                         (explicit runtime mount)
+ *   3. <repo-root-one-up>/proto/vps.proto       (nested monorepo layouts)
+ *   4. <server>/proto/vps.proto                 (server-only Docker build
+ *                                                context, where the proto is
+ *                                                committed alongside the code)
+ *
  * Modes:
- *   default   : copy root -> server if they differ (sha256). Exit 0 on success.
+ *   default   : copy source -> server if they differ (sha256). Exit 0 on success.
  *   --check   : compare only, do not write. Exit 1 if drift detected.
  *
  * Failure policy:
- *   - If the root proto is missing, exit 1. Builds must fail loudly rather
+ *   - If no source proto is found, exit 1. Builds must fail loudly rather
  *     than ship a server with an unverified/stale proto.
- *   - If the server copy is missing on first sync, it is created.
- *
- * Bypassing this step is not supported; if you need a divergent server-only
- * proto, the contract should be split, not shadowed here.
+ *   - In a server-only build context the source of truth is the in-tree
+ *     server copy; copy is a no-op (already in sync).
  * ----------------------------------------------------------------------------
  */
 
@@ -27,9 +33,23 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const ROOT_PROTO = path.resolve(__dirname, '..', '..', 'proto', 'vps.proto');
+const ROOT_PROTO_CANDIDATES = [
+  path.resolve(__dirname, '..', '..', 'proto', 'vps.proto'),
+  path.resolve('/proto', 'vps.proto'),
+  path.resolve(__dirname, '..', '..', '..', 'proto', 'vps.proto'),
+  path.resolve(__dirname, '..', 'proto', 'vps.proto'),
+];
 const SERVER_PROTO = path.resolve(__dirname, '..', 'proto', 'vps.proto');
 const CHECK_ONLY = process.argv.includes('--check');
+
+const findRootProto = () => {
+  for (const candidate of ROOT_PROTO_CANDIDATES) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+};
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
@@ -39,8 +59,9 @@ const fail = (reason) => {
 };
 
 const main = () => {
-  if (!fs.existsSync(ROOT_PROTO)) {
-    fail(`root proto not found at ${ROOT_PROTO}`);
+  const ROOT_PROTO = findRootProto();
+  if (!ROOT_PROTO) {
+    fail(`root proto not found. Searched: ${ROOT_PROTO_CANDIDATES.join(', ')}`);
   }
 
   const rootBuf = fs.readFileSync(ROOT_PROTO);

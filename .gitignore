@@ -10,6 +10,9 @@
 .agent/skills
 .commandcode
 
+# Windows shell redirect artifacts
+NUL
+
 # Tests
 /tests
 
