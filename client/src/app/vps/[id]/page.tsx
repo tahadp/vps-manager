@@ -522,9 +522,9 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
       </header>
 
       <div className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl overflow-hidden backdrop-blur-xl shadow-lg">
-        <div className="flex border-b border-border-DEFAULT bg-neutral-bg1 overflow-x-auto">
+        <div className="flex border-b border-border-DEFAULT bg-neutral-bg1 overflow-x-auto scrollbar-thin">
           {tabs.map(tab => (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative whitespace-nowrap ${activeTab === tab.key ? 'text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-neutral-bg2'}`}>
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors relative whitespace-nowrap shrink-0 ${activeTab === tab.key ? 'text-brand-light' : 'text-text-secondary hover:text-text-primary hover:bg-neutral-bg2'}`}>
               <tab.icon className="w-4 h-4" />
               {tab.label}
               {activeTab === tab.key && <motion.div layoutId="tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand" />}
