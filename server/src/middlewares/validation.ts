@@ -42,6 +42,7 @@ export function validate(schema: ZodSchema) {
           field: e.path.join('.'),
           message: e.message
         }));
+        console.error('Validation failed for', req.method, req.originalUrl, 'Errors:', JSON.stringify(errors), 'Body:', JSON.stringify(req.body));
         return res.status(400).json({ error: 'Validation failed', details: errors });
       }
       req.body = result.data;
@@ -111,7 +112,7 @@ const passwordComplexity = z.string()
 export const safeFilePathSchema = z.string()
   .min(1)
   .max(1000)
-  .regex(/^\/[a-zA-Z0-9_./\- ]*$/, 'Path contains illegal characters')
+  .regex(/^\/[a-zA-Z0-9_./\- $()]*$/, 'Path contains illegal characters')
   .refine((p: string) => !p.includes('..'), 'Path traversal detected')
   .refine((p: string) => {
     const normalized = path.posix.normalize(p);
