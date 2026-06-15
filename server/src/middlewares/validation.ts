@@ -22,7 +22,11 @@ function sanitizeObject(obj: any): any {
     const sanitized: any = {};
     for (const key in obj) {
       if (obj.hasOwnProperty(key)) {
-        sanitized[key] = sanitizeObject(obj[key]);
+        if (key === 'condition') {
+          sanitized[key] = obj[key];
+        } else {
+          sanitized[key] = sanitizeObject(obj[key]);
+        }
       }
     }
     return sanitized;
