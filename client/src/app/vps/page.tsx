@@ -144,8 +144,9 @@ export default function VpsListPage() {
   const handleBulkAction = async () => {
     if (!confirmBulk) return;
     const { action, message } = confirmBulk;
+    const targets = [...selected];
     setConfirmBulk(null);
-    setToast({ type: 'success', message: `Bulk ${action} started for ${selected.length} VPS` });
+    setToast({ type: 'success', message: `Bulk ${action} started for ${targets.length} VPS` });
     setSelected([]);
     setTimeout(() => setToast(null), 3000);
 
@@ -155,18 +156,18 @@ export default function VpsListPage() {
           setToast({ type: 'error', message: 'Only admins can delete VPS' });
           return;
         }
-        for (const id of selected) {
+        for (const id of targets) {
           await api(`/api/vps/${id}`, { method: 'DELETE' });
         }
       } else if (action === 'refresh') {
         await api('/api/vps/bulk/refresh', {
           method: 'POST',
-          json: { vpsIds: selected, command: 'refresh' }
+          json: { vpsIds: targets }
         });
       } else {
         await api('/api/vps/bulk/command', {
           method: 'POST',
-          json: { vpsIds: selected, command: action }
+          json: { vpsIds: targets, command: action }
         });
       }
     } catch (err) {

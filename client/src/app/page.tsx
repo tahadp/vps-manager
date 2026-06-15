@@ -300,25 +300,26 @@ export default function Dashboard() {
   };
 
   const executeBulkCommand = async (action: 'restart' | 'stop' | 'refresh' | 'delete') => {
-    if (selectedVps.length === 0) return;
+    const targets = [...selectedVps];
+    if (targets.length === 0) return;
     setConfirmBulk(null);
-    setToast({ type: 'success', message: `Bulk ${action} started for ${selectedVps.length} VPS` });
+    setToast({ type: 'success', message: `Bulk ${action} started for ${targets.length} VPS` });
     setSelectedVps([]);
     setTimeout(() => setToast(null), 3000);
     try {
       if (action === 'delete') {
-        for (const id of selectedVps) {
+        for (const id of targets) {
           await api(`/api/vps/${id}`, { method: 'DELETE' });
         }
       } else if (action === 'refresh') {
         await api('/api/vps/bulk/refresh', {
           method: 'POST',
-          json: { vpsIds: selectedVps, command: 'refresh' }
+          json: { vpsIds: targets }
         });
       } else {
         await api('/api/vps/bulk/command', {
           method: 'POST',
-          json: { vpsIds: selectedVps, command: action }
+          json: { vpsIds: targets, command: action }
         });
       }
     } catch {}

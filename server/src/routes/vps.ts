@@ -263,7 +263,7 @@ vpsRouter.post('/:id/refresh', requireAuth, validateParams(idParamSchema), async
 });
 
 // Bulk refresh
-vpsRouter.post('/bulk/refresh', requireAuth, validate(schemas.bulkCommand), async (req: AuthRequest, res: any) => {
+vpsRouter.post('/bulk/refresh', requireAuth, validate(schemas.bulkRefresh), async (req: AuthRequest, res: any) => {
   const { vpsIds } = req.body;
   const results: any[] = [];
   for (const vpsId of vpsIds) {

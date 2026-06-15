@@ -175,11 +175,15 @@ export const schemas = {
     command: z.string().min(1).max(1000)
   }),
 
+  bulkRefresh: z.object({
+    vpsIds: z.array(z.string().uuid()).min(1)
+  }),
+
   createRule: z.object({
     vpsId: z.string().uuid().optional(),
-    metric: z.enum(['CPU', 'RAM', 'DISK', 'OFFLINE']).optional(),
+    metric: z.enum(['CPU', 'RAM', 'DISK', 'OFFLINE', 'UPTIME']).optional(),
     condition: z.enum(['>', '<']).optional(),
-    threshold: z.number().min(0).max(100).optional(),
+    threshold: z.number().min(0).max(1000000).optional(),
     durationMin: z.number().int().min(1).max(1440).optional(),
     offlineThresholdMin: z.number().int().min(1).max(10080).optional(),
     customMessage: z.string().max(2000).optional(),
@@ -193,8 +197,15 @@ export const schemas = {
       return data.offlineThresholdMin !== undefined;
     }
     // Metric rules: must have threshold and duration
-    return data.threshold !== undefined && data.durationMin !== undefined;
-  }, { message: 'Invalid rule configuration: metric rules need threshold+duration; offline rules need offlineThresholdMin' }),
+    if (data.threshold === undefined || data.durationMin === undefined) {
+      return false;
+    }
+    // Percentage metrics must be <= 100
+    if (data.metric && ['CPU', 'RAM', 'DISK'].includes(data.metric) && data.threshold > 100) {
+      return false;
+    }
+    return true;
+  }, { message: 'Invalid rule configuration: metric rules need threshold+duration (percentages <= 100); offline rules need offlineThresholdMin' }),
 
   readFile: z.object({
     path: safeFilePathSchema
