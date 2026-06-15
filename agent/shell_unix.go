@@ -16,6 +16,7 @@ type shellSession struct {
 
 func startShell(shell string) (*shellSession, error) {
 	cmd := exec.Command(shell)
+	cmd.Dir = "/"
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		return nil, err

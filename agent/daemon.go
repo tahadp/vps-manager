@@ -541,7 +541,7 @@ func (p *program) handleServerMessage(stream pb.BackendService_StreamAgentIOClie
 	case *pb.ServerMessage_ShellOpen:
 		go p.handleShellOpen(stream, msg.RequestId, body.ShellOpen)
 	case *pb.ServerMessage_ShellInput:
-		p.handleShellInput(body.ShellInput)
+		p.handleShellInput(stream, body.ShellInput)
 	case *pb.ServerMessage_ShellClose:
 		p.handleShellClose(stream, body.ShellClose)
     case *pb.ServerMessage_Refresh:
@@ -791,12 +791,19 @@ func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, 
 	}
 }
 
-func (p *program) handleShellInput(req *pb.ShellInputRequest) {
+func (p *program) handleShellInput(stream pb.BackendService_StreamAgentIOClient, req *pb.ShellInputRequest) {
 	p.shellsMu.Lock()
 	sess := p.shells[req.SessionId]
 	p.shellsMu.Unlock()
 	if sess == nil {
 		return
+	}
+	if runtime.GOOS == "windows" {
+		_ = stream.Send(&pb.AgentMessage{
+			Body: &pb.AgentMessage_ShellOutput{
+				ShellOutput: &pb.ShellOutput{SessionId: req.SessionId, Data: req.Data},
+			},
+		})
 	}
 	_, _ = sess.Write(req.Data)
 }

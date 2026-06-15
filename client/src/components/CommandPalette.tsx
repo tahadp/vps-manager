@@ -2,14 +2,25 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
-import { Server, Search, TerminalSquare, ShieldAlert, LayoutDashboard, Settings } from 'lucide-react';
+import { Server, Search, TerminalSquare, ShieldAlert, LayoutDashboard, Settings, X, Bell, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api, getStoredUser } from '@/lib/api';
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [vpsList, setVpsList] = useState<any[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u?.role === 'ADMIN') setIsAdmin(true);
+      }
+    } catch {}
+  }, []);
 
   // Toggle the menu when ⌘K is pressed
   useEffect(() => {
@@ -58,9 +69,16 @@ export function CommandPalette() {
                 placeholder="Search servers, settings, or actions..." 
                 className="flex-1 bg-transparent border-none outline-none text-text-primary placeholder:text-text-muted text-sm"
               />
-              <div className="px-1.5 py-0.5 rounded border border-border-DEFAULT text-[10px] text-text-muted bg-neutral-bg2 ml-3">
+              <div className="hidden sm:block px-1.5 py-0.5 rounded border border-border-DEFAULT text-[10px] text-text-muted bg-neutral-bg2 ml-3">
                 ESC
               </div>
+              <button 
+                onClick={() => setOpen(false)}
+                className="p-1 hover:bg-white/10 rounded-lg text-text-muted hover:text-text-primary transition-colors ml-2"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
             <Command.List className="max-h-[300px] overflow-y-auto p-2 scrollbar-thin">
@@ -95,6 +113,18 @@ export function CommandPalette() {
                   <LayoutDashboard className="w-4 h-4" /> Dashboard
                 </Command.Item>
                 <Command.Item
+                  onSelect={() => { router.push('/vps'); setOpen(false); }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
+                >
+                  <Server className="w-4 h-4" /> VPS List
+                </Command.Item>
+                <Command.Item
+                  onSelect={() => { router.push('/alerts'); setOpen(false); }}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
+                >
+                  <Bell className="w-4 h-4" /> Alerts
+                </Command.Item>
+                <Command.Item
                   onSelect={() => { router.push('/audit'); setOpen(false); }}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
                 >
@@ -106,6 +136,14 @@ export function CommandPalette() {
                 >
                   <Settings className="w-4 h-4" /> Settings
                 </Command.Item>
+                {isAdmin && (
+                  <Command.Item
+                    onSelect={() => { router.push('/admin'); setOpen(false); }}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
+                  >
+                    <Shield className="w-4 h-4" /> Admin
+                  </Command.Item>
+                )}
               </Command.Group>
 
             </Command.List>

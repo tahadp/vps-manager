@@ -155,14 +155,11 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const fetchChartData = useCallback(async (rangeMin: number) => {
     try {
       const hours = Math.max(1, Math.ceil(rangeMin / 60));
-      console.log('Fetching metrics for hours:', hours);
       const metrics = await api<any[]>(`/api/vps/${id}/metrics?hours=${hours}`);
-      console.log('Fetched metrics response:', metrics);
       if (Array.isArray(metrics) && metrics.length > 0) {
         const latestTime = new Date(metrics[metrics.length - 1].timestamp).getTime();
         const since = latestTime - rangeMin * 60 * 1000;
         const filtered = metrics.filter((m: any) => new Date(m.timestamp).getTime() >= since);
-        console.log('Filtered metrics count:', filtered.length);
         setChartData(filtered.map((m: any) => ({
           time: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           cpu: m.cpu,
@@ -172,12 +169,9 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
           netRx: m.netRx
         })));
       } else {
-        console.warn('Metrics is not an array or empty:', metrics);
         setChartData([]);
       }
-    } catch (err) {
-      console.error('Failed to fetch chart data:', err);
-    }
+    } catch {}
   }, [id]);
 
   useEffect(() => {
