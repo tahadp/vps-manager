@@ -6,6 +6,7 @@ import { writeHistoricalMetric } from './metrics';
 import { io } from './socket';
 import { logger } from './logger';
 import { metrics as m } from './metrics-prom';
+import { logIpChangeIfChanged } from './middlewares/audit';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
@@ -72,96 +73,48 @@ const refreshRules = async () => {
   }
 };
 
-export const initAlertingEngine = () => {
-  console.log('Dynamic Alerting Engine Initialized');
-  
-  // Refresh rules every 30 seconds
-  refreshRules();
-  setInterval(refreshRules, 30000);
-  
-  // Offline detection: mark VPS as OFFLINE if no heartbeat for 60 seconds
-  setInterval(async () => {
-    try {
-      const cutoff = new Date(Date.now() - 60000);
-      const staleVps = await prisma.vps.findMany({
-        where: {
-          status: 'ONLINE',
-          lastHeartbeat: { lt: cutoff }
-        }
-      });
+export const handleVpsRecovery = async (vpsId: string, now: Date, agentIp: string) => {
+  try {
+    const vps = await prisma.vps.findUnique({
+      where: { id: vpsId },
+      include: { settings: true }
+    });
+    if (!vps) return;
 
-      for (const vps of staleVps) {
-        const lastHb = vps.lastHeartbeat ? vps.lastHeartbeat.getTime() : Date.now();
-        const offlineMinutes = Math.floor((Date.now() - lastHb) / 60000);
+    const statusChanged = vps.status === 'OFFLINE';
 
-        await prisma.vps.update({
-          where: { id: vps.id },
-          data: { status: 'OFFLINE' }
-        });
+    await logIpChangeIfChanged(vpsId, agentIp);
 
-        redisPublisher.publish(`vps_status:${vps.id}`, JSON.stringify({
-          vpsId: vps.id,
-          status: 'OFFLINE',
-          lastHeartbeat: vps.lastHeartbeat,
-          ipAddress: vps.ipAddress
-        }));
-
-        // F0-14: Honor VpsSettings.telegramEnabled
-        const offlineSettings = await prisma.vpsSettings.findUnique({ where: { vpsId: vps.id } }).catch(() => null);
-        if (offlineSettings?.telegramEnabled !== false) {
-          await sendTelegramAlert(
-            vps.userId,
-            `⚠️ VPS ${vps.name} (${vps.ipAddress}) is OFFLINE — no heartbeat received for over 60 seconds.`
-          );
-        }
-
-        // Check OFFLINE rules for this user/vps
-        const offlineRules = activeRules.filter(r =>
-          r.userId === vps.userId &&
-          (r.vpsId === null || r.vpsId === vps.id) &&
-          (r.metric === 'OFFLINE' || r.metric === null) &&
-          r.offlineThresholdMin !== null
-        );
-
-        for (const rule of offlineRules) {
-          if (offlineMinutes < rule.offlineThresholdMin) continue;
-
-          const cooldownKey = `rule_cooldown:${rule.id}:${vps.id}`;
-          // F0-12: Atomic SET NX EX — only one writer claims the cooldown slot
-          const acquired = await redisCache.set(cooldownKey, '1', 'EX', 3600, 'NX');
-          if (acquired !== 'OK') continue;
-
-          await triggerRuleAction(vps, rule, {
-            metric: 'OFFLINE',
-            value: 0,
-            threshold: 0,
-            durationMin: 0,
-            offlineMinutes
-          });
-        }
+    await prisma.vps.update({
+      where: { id: vpsId },
+      data: {
+        status: 'ONLINE',
+        lastHeartbeat: now,
+        ipAddress: agentIp
       }
+    });
 
-      // Also detect recovery: VPS that were OFFLINE and now have a fresh heartbeat
-      const recoveredVps = await prisma.vps.findMany({
-        where: {
-          status: 'OFFLINE',
-          lastHeartbeat: { gte: cutoff }
+    if (statusChanged) {
+      redisPublisher.publish(`vps_status:${vpsId}`, JSON.stringify({
+        vpsId,
+        status: 'ONLINE',
+        lastHeartbeat: now,
+        ipAddress: agentIp
+      }));
+
+      const settings = vps.settings;
+      const onlineAlertEnabled = settings?.onlineAlertEnabled !== false;
+      const telegramEnabled = settings?.telegramEnabled !== false;
+
+      if (onlineAlertEnabled) {
+        const customMsg = settings?.customOnlineMessage;
+        const recoveryMsg = customMsg
+          ? applyMessageTemplate(customMsg, { ...vps, ipAddress: agentIp }, { metric: 'RECOVERY' })
+          : `✅ ${vps.name} (${agentIp}) is back ONLINE.`;
+
+        if (telegramEnabled) {
+          await sendTelegramAlert(vps.userId, recoveryMsg);
         }
-      });
-      for (const vps of recoveredVps) {
-        // F0-3: Emit RECOVERY notification
-        await prisma.vps.update({
-          where: { id: vps.id },
-          data: { status: 'ONLINE' }
-        });
-        redisPublisher.publish(`vps_status:${vps.id}`, JSON.stringify({
-          vpsId: vps.id,
-          status: 'ONLINE',
-          lastHeartbeat: vps.lastHeartbeat,
-          ipAddress: vps.ipAddress
-        }));
-        const recoveryMsg = `✅ ${vps.name} (${vps.ipAddress}) is back ONLINE.`;
-        await sendTelegramAlert(vps.userId, recoveryMsg);
         await pushNotification(vps.userId, {
           type: 'RECOVERY',
           vpsId: vps.id,
@@ -169,6 +122,104 @@ export const initAlertingEngine = () => {
           message: recoveryMsg,
           timestamp: Date.now()
         });
+      }
+    } else {
+      redisPublisher.publish(`vps_status:${vpsId}`, JSON.stringify({
+        vpsId,
+        status: 'ONLINE',
+        lastHeartbeat: now,
+        ipAddress: agentIp
+      }));
+    }
+  } catch (err) {
+    logger.error({ err, vpsId }, 'Failed to handle VPS recovery');
+  }
+};
+
+export const initAlertingEngine = () => {
+  console.log('Dynamic Alerting Engine Initialized');
+  
+  // Refresh rules every 30 seconds
+  refreshRules();
+  setInterval(refreshRules, 30000);
+  
+  // Offline detection: mark VPS as OFFLINE if no heartbeat for dynamic timeout
+  setInterval(async () => {
+    try {
+      // Fetch all ONLINE VPS with settings
+      const onlineVps = await prisma.vps.findMany({
+        where: { status: 'ONLINE' },
+        include: { settings: true }
+      });
+
+      for (const vps of onlineVps) {
+        const timeoutSec = vps.settings?.offlineTimeoutSec ?? 60;
+        const lastHb = vps.lastHeartbeat;
+        if (!lastHb) continue;
+
+        const msSinceLastHb = Date.now() - lastHb.getTime();
+        if (msSinceLastHb >= timeoutSec * 1000) {
+          const offlineMinutes = Math.floor(msSinceLastHb / 60000);
+
+          await prisma.vps.update({
+            where: { id: vps.id },
+            data: { status: 'OFFLINE' }
+          });
+
+          redisPublisher.publish(`vps_status:${vps.id}`, JSON.stringify({
+            vpsId: vps.id,
+            status: 'OFFLINE',
+            lastHeartbeat: vps.lastHeartbeat,
+            ipAddress: vps.ipAddress
+          }));
+
+          const settings = vps.settings;
+          const defaultOfflineEnabled = settings?.offlineAlertEnabled !== false;
+          const telegramEnabled = settings?.telegramEnabled !== false;
+
+          // If default offline alert is enabled
+          if (defaultOfflineEnabled) {
+            const customMsg = settings?.customOfflineMessage;
+            const offlineMsg = customMsg
+              ? applyMessageTemplate(customMsg, vps, { metric: 'OFFLINE', offlineMinutes })
+              : `⚠️ VPS ${vps.name} (${vps.ipAddress}) is OFFLINE — no heartbeat received for over ${timeoutSec} seconds.`;
+
+            if (telegramEnabled) {
+              await sendTelegramAlert(vps.userId, offlineMsg);
+            }
+            await pushNotification(vps.userId, {
+              type: 'OFFLINE',
+              vpsId: vps.id,
+              vpsName: vps.name,
+              message: offlineMsg,
+              timestamp: Date.now()
+            });
+          }
+
+          // Check OFFLINE rules for this user/vps (these are additional custom rules)
+          const offlineRules = activeRules.filter(r =>
+            r.userId === vps.userId &&
+            (r.vpsId === null || r.vpsId === vps.id) &&
+            (r.metric === 'OFFLINE' || r.metric === null) &&
+            r.offlineThresholdMin !== null
+          );
+
+          for (const rule of offlineRules) {
+            if (offlineMinutes < rule.offlineThresholdMin) continue;
+
+            const cooldownKey = `rule_cooldown:${rule.id}:${vps.id}`;
+            const acquired = await redisCache.set(cooldownKey, '1', 'EX', 3600, 'NX');
+            if (acquired !== 'OK') continue;
+
+            await triggerRuleAction(vps, rule, {
+              metric: 'OFFLINE',
+              value: 0,
+              threshold: 0,
+              durationMin: 0,
+              offlineMinutes
+            });
+          }
+        }
       }
     } catch (err) {
       logger.error({ err }, 'Offline detection error');
@@ -209,6 +260,7 @@ export const initAlertingEngine = () => {
           if (rule.metric === 'CPU') metricValue = data.CPUUsage;
           else if (rule.metric === 'RAM') metricValue = data.RAMUsage;
           else if (rule.metric === 'DISK') metricValue = data.DiskUsage;
+          else if (rule.metric === 'UPTIME') metricValue = (data.Uptime || 0) / 60; // Convert seconds to minutes
           else continue;
 
           // Check condition
@@ -265,21 +317,23 @@ export const initAlertingEngine = () => {
  * Trigger a rule's action (alert, restart, custom script, or alert+restart).
  * Builds the message (using custom template if provided) and executes any commands.
  */
-const triggerRuleAction = async (vps: any, rule: any, context: {
+async function triggerRuleAction(vps: any, rule: any, context: {
   metric: string;
   value: number;
   threshold: number;
   durationMin: number;
   offlineMinutes?: number;
-}) => {
+}) {
   // F0-14: Honor per-VPS overrides from VpsSettings
   const settings = await prisma.vpsSettings.findUnique({ where: { vpsId: vps.id } }).catch(() => null);
   const telegramEnabled = settings?.telegramEnabled !== false; // default true
   const customMessage = settings?.customAlertMessage || rule.customMessage;
 
+  const isPercent = context.metric !== 'UPTIME' && context.metric !== 'OFFLINE';
+  const pct = isPercent ? '%' : '';
   const baseMsg = customMessage
     ? applyMessageTemplate(customMessage, vps, context)
-    : `🚨 ALERT! VPS ${vps.name} (${vps.ipAddress}) violated rule: ${context.metric} ${rule.condition} ${context.threshold}% for ${context.durationMin} minutes. Current: ${context.value.toFixed(1)}%.`;
+    : `🚨 ALERT! VPS ${vps.name} (${vps.ipAddress}) violated rule: ${context.metric} ${rule.condition} ${context.threshold}${pct} for ${context.durationMin} minutes. Current: ${context.value.toFixed(1)}${pct}.`;
 
   const shouldRestart = rule.action === 'RESTART' || rule.action === 'ALERT_AND_RESTART' || rule.restartOnAlert;
   const shouldAlert = rule.action === 'ALERT' || rule.action === 'ALERT_AND_RESTART' || rule.action === 'NOTIFY_ONLY' || !shouldRestart;
@@ -324,13 +378,13 @@ const triggerRuleAction = async (vps: any, rule: any, context: {
       logger.error({ err: cmdErr, vpsId: vps.id }, 'Failed to execute restart');
     }
   }
-};
+}
 
 /**
  * Replace template variables in a custom message.
  * Supported: {{vpsName}}, {{ip}}, {{metric}}, {{value}}, {{threshold}}, {{duration}}, {{offlineMinutes}}
  */
-const applyMessageTemplate = (template: string, vps: any, context: any): string => {
+function applyMessageTemplate(template: string, vps: any, context: any): string {
   return template
     .replace(/\{\{vpsName\}\}/g, vps.name || '')
     .replace(/\{\{ip\}\}/g, vps.ipAddress || '')
@@ -339,4 +393,4 @@ const applyMessageTemplate = (template: string, vps: any, context: any): string 
     .replace(/\{\{threshold\}\}/g, String(context.threshold ?? ''))
     .replace(/\{\{duration\}\}/g, String(context.durationMin ?? ''))
     .replace(/\{\{offlineMinutes\}\}/g, String(context.offlineMinutes ?? 0));
-};
+}

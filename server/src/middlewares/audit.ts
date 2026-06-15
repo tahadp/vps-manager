@@ -57,3 +57,22 @@ export const startAuditPruneInterval = (): NodeJS.Timeout => {
   interval.unref();
   return interval;
 };
+
+export async function logIpChangeIfChanged(vpsId: string, newIp: string): Promise<void> {
+  try {
+    const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
+    if (!vps) return;
+    const oldIp = vps.ipAddress;
+    if (oldIp !== newIp && newIp && newIp !== 'Unknown' && newIp !== 'Pending') {
+      logger.info({ vpsId, oldIp, newIp }, 'VPS IP address changed');
+      await logAudit({
+        userId: vps.userId,
+        action: 'IP_CHANGED',
+        target: vpsId,
+        details: `IP address changed from ${oldIp} to ${newIp}`
+      });
+    }
+  } catch (err) {
+    logger.error({ err, vpsId }, 'Failed to log IP change');
+  }
+}

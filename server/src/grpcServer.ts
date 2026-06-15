@@ -4,6 +4,7 @@ import path from 'path';
 import { redisPublisher, redisCache } from './redis';
 import { logger } from './logger';
 import { metrics as m } from './metrics-prom';
+import { handleVpsRecovery } from './alerting';
 
 const PROTO_PATH = path.join(__dirname, '../proto/vps.proto');
 
@@ -25,6 +26,7 @@ const settingsCache = new Set<string>();
 const server = new grpc.Server();
 
 import { prisma } from './prisma';
+import { logIpChangeIfChanged } from './middlewares/audit';
 import { registerAgentStream, unregisterAgentStream, resolveAgentResponse, handleShellOutput, recordHeartbeat } from './agentDispatcher';
 
 const checkApiKey = async (call: any, callback?: any) => {
@@ -52,6 +54,7 @@ server.addService(vpsPackage.BackendService.service, {
       m.grpcCallsTotal.inc({ method: 'StreamTelemetry', status: 'error' });
       return;
     }
+
     call.on('data', (request: any) => {
       m.telemetryFramesTotal.inc();
       redisPublisher.publish(`telemetry:${request.vps_id}`, JSON.stringify({
@@ -63,9 +66,11 @@ server.addService(vpsPackage.BackendService.service, {
         DiskTotal: request.disk_total,
         NetTx: request.net_tx,
         NetRx: request.net_rx,
-        Timestamp: request.timestamp
+        Timestamp: request.timestamp,
+        Uptime: Number(request.uptime || 0)
       }));
     });
+
     call.on('end', () => {
       call.end();
     });
@@ -107,15 +112,7 @@ server.addService(vpsPackage.BackendService.service, {
       const agentIp = (call.request && call.request.agent_ip) || peerIp;
       const now = new Date();
 
-      // F0-15: updateMany avoids the existence-check round-trip of update()
-      await prisma.vps.updateMany({
-        where: { id: call.authenticatedVpsId },
-        data: {
-          lastHeartbeat: now,
-          status: 'ONLINE',
-          ipAddress: agentIp
-        }
-      });
+      await handleVpsRecovery(call.authenticatedVpsId, now, agentIp);
 
       let settingsMessage: any = null;
       try {
@@ -204,6 +201,7 @@ server.addService(vpsPackage.BackendService.service, {
         if (msg.body === 'register' && msg.register) {
           const req = msg.register;
           if (req.agent_ip) {
+            await logIpChangeIfChanged(boundVpsId, req.agent_ip);
             await prisma.vps.update({
               where: { id: boundVpsId },
               data: { ipAddress: req.agent_ip }

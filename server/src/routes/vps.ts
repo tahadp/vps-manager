@@ -5,7 +5,7 @@ import { execOnAgent, listDirOnAgent, readFileFromAgent, writeFileToAgent, refre
 import { redisPublisher, redisCache } from '../redis';
 import { OsType } from '@prisma/client';
 import { validate, validateQuery, validateParams, schemas, safeFilePathSchema } from '../middlewares/validation';
-import { logAudit } from '../middlewares/audit';
+import { logAudit, logIpChangeIfChanged } from '../middlewares/audit';
 import { sendSettingsUpdate } from '../agentDispatcher';
 import { z } from 'zod';
 
@@ -37,7 +37,12 @@ const vpsSettingsSchema = z.object({
   networkVisible: z.boolean().optional(),
   telegramEnabled: z.boolean().optional(),
   customAlertMessage: z.string().max(500).optional(),
-  visibleCharts: z.array(z.enum(['cpu', 'ram', 'disk', 'network'])).max(4).optional()
+  visibleCharts: z.array(z.enum(['cpu', 'ram', 'disk', 'network'])).max(4).optional(),
+  offlineTimeoutSec: z.number().int().min(5).max(3600).optional(),
+  offlineAlertEnabled: z.boolean().optional(),
+  onlineAlertEnabled: z.boolean().optional(),
+  customOfflineMessage: z.string().max(500).nullable().optional(),
+  customOnlineMessage: z.string().max(500).nullable().optional()
 });
 const userPrefsSchema = z.object({
   dashboardVpsOrder: z.array(z.string().uuid()).max(500).optional(),
@@ -81,7 +86,14 @@ vpsRouter.get('/', requireAuth, async (req: AuthRequest, res) => {
       omit: { apiKey: true },
       orderBy: { name: 'asc' }
     });
-    res.json(vpsList);
+
+    const listWithScreenshots = await Promise.all(
+      vpsList.map(async (vps) => {
+        const latestScreenshot = await redisCache.hget('vps_latest_screenshots', vps.id);
+        return { ...vps, latestScreenshot };
+      })
+    );
+    res.json(listWithScreenshots);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch VPS list' });
   }
@@ -193,6 +205,9 @@ vpsRouter.put('/:id', requireAuth, validateParams(idParamSchema), validate(schem
       }
     } else if (customOsName !== undefined) {
       dataToUpdate.customOsName = customOsName ? String(customOsName).trim() : null;
+    }
+    if (ipAddress) {
+      await logIpChangeIfChanged(id as string, ipAddress as string);
     }
     const updatedVps = await prisma.vps.update({
       where: { id: id as string },
@@ -308,7 +323,12 @@ vpsRouter.put('/:id/settings', requireAuth, validateParams(idParamSchema), valid
         networkVisible: req.body.networkVisible ?? true,
         telegramEnabled: req.body.telegramEnabled ?? true,
         customAlertMessage: req.body.customAlertMessage ?? null,
-        visibleCharts: req.body.visibleCharts ? JSON.stringify(req.body.visibleCharts) : JSON.stringify(['cpu', 'ram', 'disk', 'network'])
+        visibleCharts: req.body.visibleCharts ? JSON.stringify(req.body.visibleCharts) : JSON.stringify(['cpu', 'ram', 'disk', 'network']),
+        offlineTimeoutSec: req.body.offlineTimeoutSec ?? 60,
+        offlineAlertEnabled: req.body.offlineAlertEnabled ?? true,
+        onlineAlertEnabled: req.body.onlineAlertEnabled ?? true,
+        customOfflineMessage: req.body.customOfflineMessage ?? null,
+        customOnlineMessage: req.body.customOnlineMessage ?? null
       }
     });
 

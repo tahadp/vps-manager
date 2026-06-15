@@ -293,8 +293,11 @@ export default function VpsListPage() {
       </AnimatePresence>
 
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border ${toast.type === 'success' ? 'bg-status-success/10 border-status-success/30 text-status-success' : 'bg-status-error/10 border-status-error/30 text-status-error'}`}>
-          {toast.message}
+        <div className={`fixed top-20 right-4 z-50 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border max-w-sm backdrop-blur-md animate-fade-in ${toast.type === 'success' ? 'bg-status-success/15 border-status-success/30 text-status-success' : 'bg-status-error/15 border-status-error/30 text-status-error'}`}>
+          <span>{toast.message}</span>
+          <button onClick={() => setToast(null)} className="p-0.5 hover:bg-white/10 rounded transition-colors" aria-label="Close notification">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -369,17 +372,19 @@ export default function VpsListPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <RefreshButton vpsId={vps.id} className="p-1.5 text-status-info hover:bg-status-info/10 rounded-lg transition-colors" />
+                        <RefreshButton vpsId={vps.id} disabled={vps.status !== 'ONLINE'} className="p-1.5 text-status-info hover:bg-status-info/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" />
                         <button
                           onClick={() => executeSingleAction(vps.id, 'restart')}
-                          className="p-1.5 text-text-primary hover:bg-neutral-bg3 rounded-lg transition-colors"
+                          disabled={vps.status !== 'ONLINE'}
+                          className="p-1.5 text-text-primary hover:bg-neutral-bg3 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           title="Restart VPS"
                         >
                           <RefreshCw className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => executeSingleAction(vps.id, 'stop')}
-                          className="p-1.5 text-status-error hover:bg-status-error/10 rounded-lg transition-colors"
+                          disabled={vps.status !== 'ONLINE'}
+                          className="p-1.5 text-status-error hover:bg-status-error/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                           title="Stop VPS"
                         >
                           <PowerOff className="w-4 h-4" />

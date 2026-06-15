@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Server, Cpu, MemoryStick, Activity,
-  PowerOff, RefreshCw, Eye, AlertCircle, GripHorizontal, RefreshCcw
+  PowerOff, RefreshCw, Eye, AlertCircle, GripHorizontal, RefreshCcw, X
 } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -133,17 +133,19 @@ function SortableVpsCard(props: any) {
       </div>
 
       <div className="p-3 border-t border-border-subtle bg-neutral-bg1/50 flex gap-2 justify-end">
-        <RefreshButton vpsId={vps.id} className="p-2 bg-status-info/10 hover:bg-status-info/20 text-status-info rounded-lg transition-colors border border-status-info/20" />
+        <RefreshButton vpsId={vps.id} disabled={vps.status !== 'ONLINE'} className="p-2 bg-status-info/10 hover:bg-status-info/20 text-status-info rounded-lg transition-colors border border-status-info/20 disabled:opacity-40 disabled:cursor-not-allowed" />
         <button
           onClick={() => executeCommand(vps.id, 'restart')}
-          className="p-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-secondary hover:text-text-primary rounded-lg transition-colors border border-border-subtle"
+          disabled={vps.status !== 'ONLINE'}
+          className="p-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-secondary hover:text-text-primary rounded-lg transition-colors border border-border-subtle disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neutral-bg3"
           title="Restart Server"
         >
           <RefreshCw className="w-4 h-4" />
         </button>
         <button
           onClick={() => executeCommand(vps.id, 'stop')}
-          className="p-2 bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-lg transition-colors border border-status-error/20"
+          disabled={vps.status !== 'ONLINE'}
+          className="p-2 bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-lg transition-colors border border-status-error/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-status-error/10"
           title="Power Off"
         >
           <PowerOff className="w-4 h-4" />
@@ -199,6 +201,14 @@ export default function Dashboard() {
       try {
         const data = await api<any[]>('/api/vps');
         if (!Array.isArray(data)) return;
+
+        const initialScreenshots: Record<string, string> = {};
+        data.forEach((vps: any) => {
+          if (vps.latestScreenshot) {
+            initialScreenshots[vps.id] = vps.latestScreenshot;
+          }
+        });
+        setScreenshots(prev => ({ ...initialScreenshots, ...prev }));
 
         let order: string[] = [];
         try {
@@ -412,8 +422,11 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border ${toast.type === 'success' ? 'bg-status-success/10 border-status-success/30 text-status-success' : 'bg-status-error/10 border-status-error/30 text-status-error'}`}>
-          {toast.message}
+        <div className={`fixed top-20 right-4 z-50 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border max-w-sm backdrop-blur-md animate-fade-in ${toast.type === 'success' ? 'bg-status-success/15 border-status-success/30 text-status-success' : 'bg-status-error/15 border-status-error/30 text-status-error'}`}>
+          <span>{toast.message}</span>
+          <button onClick={() => setToast(null)} className="p-0.5 hover:bg-white/10 rounded transition-colors" aria-label="Close notification">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 

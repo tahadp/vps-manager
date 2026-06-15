@@ -9,7 +9,7 @@ export function Topbar() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <header className="h-16 glass border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-10 sticky top-0">
+    <header className="h-16 glass border-b border-white/5 flex items-center justify-between px-6 shrink-0 z-30 sticky top-0">
       <div className="flex-1 max-w-md relative flex items-center">
         <Search className="absolute left-3 w-4 h-4 text-text-muted" />
         <input

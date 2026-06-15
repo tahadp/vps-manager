@@ -8,7 +8,7 @@ import {
   AlertCircle, LineChart as LineChartIcon, Activity, Wifi, WifiOff,
   Clock, Shield, Image as ImageIcon, ArrowUpDown, Plus, Trash2,
   Edit3, Bell, History, Zap, ChevronDown, Save, Network, Eye, MoreVertical,
-  LayoutDashboard, Settings as SettingsIcon
+  LayoutDashboard, Settings as SettingsIcon, X
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import WebPTY from "@/components/Terminal";
@@ -50,6 +50,22 @@ function formatTimeAgo(dateStr: string | null, now: number): string {
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatUptime(secs: number | null | undefined): string {
+  if (secs === undefined || secs === null || isNaN(secs) || secs < 0) return "Offline";
+  const days = Math.floor(secs / 86400);
+  const hours = Math.floor((secs % 86400) / 3600);
+  const minutes = Math.floor((secs % 3600) / 60);
+  const seconds = Math.floor(secs % 60);
+
+  const parts = [];
+  if (days > 0) parts.push(`${days} gün`);
+  if (hours > 0) parts.push(`${hours} saat`);
+  if (minutes > 0) parts.push(`${minutes} dakika`);
+  parts.push(`${seconds} saniye`);
+
+  return parts.join(' ');
 }
 
 const CHART_RANGES = [
@@ -133,6 +149,14 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const [socketStatus, setSocketStatus] = useState<"connecting" | "connected" | "error">("connecting");
   const { socket, connectionStatus: globalConnStatus } = useSocket();
   const [now, setNow] = useState<number>(Date.now());
+  const [uptimeSeconds, setUptimeSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setUptimeSeconds(prev => (prev !== null && prev >= 0) ? prev + 1 : null);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Visible charts (from VPS settings) - default to all
   const [visibleCharts, setVisibleCharts] = useState<string[]>(DEFAULT_VISIBLE_CHARTS);
@@ -145,6 +169,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const [editForm, setEditForm] = useState({ name: '', ipAddress: '', os: '', status: '' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [cmdResult, setCmdResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [ipLogs, setIpLogs] = useState<any[]>([]);
 
   const showConfirm = (message: string): Promise<boolean> => {
     return new Promise(resolve => {
@@ -233,6 +258,17 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   }, [id, router, fetchChartData]);
 
   useEffect(() => {
+    if (activeTab === 'overview') {
+      api<{ data?: any[] } | any[]>(`/api/audit?vpsId=${id}&take=50`)
+        .then(d => {
+          const rawLogs = (d && (d as any).data) ? (d as any).data : (Array.isArray(d) ? d : []);
+          setIpLogs(rawLogs.filter((l: any) => l.action === 'IP_CHANGED'));
+        })
+        .catch(() => {});
+    }
+  }, [id, activeTab]);
+
+  useEffect(() => {
     if (!socket) return;
 
     if (socket.connected) {
@@ -249,7 +285,12 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     const onConnectError = () => setSocketStatus("error");
     const onDisconnect = () => setSocketStatus("error");
     const onTelemetry = (d: any) => {
-      if (d && d.vpsId === id) setTelemetry(d);
+      if (d && d.vpsId === id) {
+        setTelemetry(d);
+        if (d.Uptime !== undefined) {
+          setUptimeSeconds(Number(d.Uptime));
+        }
+      }
     };
     const onScreenshot = (d: any) => {
       if (d && d.vpsId === id && d.imageData) setScreenshot(d.imageData);
@@ -399,8 +440,11 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
       )}
 
       {cmdResult && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border ${cmdResult.type === 'success' ? 'bg-status-success/10 border-status-success/30 text-status-success' : 'bg-status-error/10 border-status-error/30 text-status-error'}`}>
-          {cmdResult.message}
+        <div className={`fixed top-20 right-4 z-50 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border max-w-sm backdrop-blur-md animate-fade-in ${cmdResult.type === 'success' ? 'bg-status-success/15 border-status-success/30 text-status-success' : 'bg-status-error/15 border-status-error/30 text-status-error'}`}>
+          <span>{cmdResult.message}</span>
+          <button onClick={() => setCmdResult(null)} className="p-0.5 hover:bg-white/10 rounded transition-colors" aria-label="Close notification">
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -425,7 +469,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <RefreshButton vpsId={id} onResult={(ok, msg) => setCmdResult({ type: ok ? 'success' : 'error', message: msg })} />
+          <RefreshButton vpsId={id} disabled={isOffline} onResult={(ok, msg) => setCmdResult({ type: ok ? 'success' : 'error', message: msg })} />
           {isAdmin && (
             <button onClick={() => { setEditForm({ name: vps.name, ipAddress: vps.ipAddress || '', os: vps.os, status: vps.status }); setEditModal(true); }} className="flex items-center gap-1.5 px-3 py-2 text-xs bg-neutral-bg2 hover:bg-neutral-bg3 text-text-secondary rounded-xl border border-border-DEFAULT transition-colors">
               <Edit3 className="w-3.5 h-3.5" /> Edit
@@ -511,6 +555,12 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                     <div className="flex justify-between"><span className="text-text-muted">IP Address</span><span className="text-text-primary font-mono text-xs">{vps.ipAddress || "N/A"}</span></div>
                     <div className="flex justify-between"><span className="text-text-muted">OS</span><span className="text-text-primary">{vps.os}{vps.customOsName ? ` / ${vps.customOsName}` : ''}</span></div>
                     {vps.user && <div className="flex justify-between"><span className="text-text-muted">Owner</span><span className="text-text-primary text-xs">{vps.user.email}</span></div>}
+                    {vps.status === 'ONLINE' && (
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Uptime</span>
+                        <span className="text-text-primary font-medium text-xs">{formatUptime(uptimeSeconds)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -561,18 +611,61 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                       <TerminalSquare className="w-4 h-4" /> Open Terminal
                     </button>
                     <div className="grid grid-cols-3 gap-2">
-                      <button onClick={() => executeAction('start')} className="flex items-center justify-center gap-1.5 py-2 bg-status-success/10 hover:bg-status-success/20 text-status-success rounded-lg text-xs font-medium transition-colors border border-status-success/20">
+                      <button
+                        onClick={() => executeAction('start')}
+                        disabled={true}
+                        className="flex items-center justify-center gap-1.5 py-2 bg-status-success/10 hover:bg-status-success/20 text-status-success rounded-lg text-xs font-medium transition-colors border border-status-success/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none disabled:hover:bg-status-success/10"
+                        title="Start action is inactive (agent is not running)"
+                      >
                         <Play className="w-3.5 h-3.5" /> Start
                       </button>
-                      <button onClick={() => executeAction('restart')} className="flex items-center justify-center gap-1.5 py-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-primary rounded-lg text-xs font-medium transition-colors border border-border-subtle">
+                      <button
+                        onClick={() => executeAction('restart')}
+                        disabled={isOffline}
+                        className="flex items-center justify-center gap-1.5 py-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-primary rounded-lg text-xs font-medium transition-colors border border-border-subtle disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none disabled:hover:bg-neutral-bg3"
+                      >
                         <RefreshCw className="w-3.5 h-3.5" /> Restart
                       </button>
-                      <button onClick={() => executeAction('stop')} className="flex items-center justify-center gap-1.5 py-2 bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-lg text-xs font-medium transition-colors border border-status-error/20">
+                      <button
+                        onClick={() => executeAction('stop')}
+                        disabled={isOffline}
+                        className="flex items-center justify-center gap-1.5 py-2 bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-lg text-xs font-medium transition-colors border border-status-error/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none disabled:hover:bg-status-error/10"
+                      >
                         <PowerOff className="w-3.5 h-3.5" /> Stop
                       </button>
                     </div>
                   </div>
                 </div>
+
+                <div className="bg-neutral-bg2/60 border border-border-subtle rounded-xl p-4 flex flex-col min-h-[180px]">
+                  <h3 className="text-xs font-bold tracking-wider uppercase text-text-muted mb-3 flex items-center gap-2">
+                    <Network className="w-3.5 h-3.5 text-dataviz-blue" /> IP Address History
+                  </h3>
+                  <div className="flex-1 overflow-y-auto space-y-2 max-h-[140px] pr-1 custom-scrollbar">
+                    {ipLogs.length === 0 ? (
+                      <div className="text-text-muted text-xs text-center py-6">
+                        No IP address changes logged yet.
+                      </div>
+                    ) : (
+                      ipLogs.map((log: any) => {
+                        const parts = log.target.split(' - ');
+                        const desc = parts[1] || log.target;
+                        const cleanDesc = desc.replace("IP address changed ", "");
+                        return (
+                          <div key={log.id} className="flex justify-between items-center gap-3 border-b border-border-subtle/30 pb-2 last:border-0 last:pb-0">
+                            <span className="text-text-primary text-xs font-mono font-medium truncate" title={desc}>
+                              {cleanDesc}
+                            </span>
+                            <span className="text-text-muted text-[10px] whitespace-nowrap">
+                              {new Date(log.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
