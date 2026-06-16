@@ -307,6 +307,7 @@ func (p *program) sendTelemetryImmediate() {
 		NetTx:     float32(metrics.NetTx),
 		NetRx:     float32(metrics.NetRx),
 		Timestamp: metrics.Timestamp,
+		Uptime:    int64(metrics.Uptime),
 	})
 }
 
@@ -381,6 +382,7 @@ func (p *program) telemetryLoop(backendClient pb.BackendServiceClient) {
                 NetTx:     float32(metrics.NetTx),
                 NetRx:     float32(metrics.NetRx),
                 Timestamp: metrics.Timestamp,
+                Uptime:    int64(metrics.Uptime),
             }
             if err := stream.Send(req); err != nil {
                 log.Printf("Telemetry stream send error: %v", err)

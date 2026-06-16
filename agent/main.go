@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,54 @@ import (
 )
 
 func main() {
+	// Handle command-line configuration flags or standard service commands if passed
+	if len(os.Args) > 1 {
+		firstArg := os.Args[1]
+		if firstArg[0] == '-' {
+			apiKeyFlag := flag.String("api-key", "", "API Key for authentication")
+			vpsIDFlag := flag.String("vps-id", "", "ID of this VPS")
+			backendIPFlag := flag.String("backend-ip", "", "Backend IP and port (e.g. 1.2.3.4:50051)")
+			flag.Parse()
+
+			if *apiKeyFlag != "" || *vpsIDFlag != "" || *backendIPFlag != "" {
+				cfg, err := LoadConfig()
+				if err != nil {
+					cfg = &Config{}
+				}
+				if *apiKeyFlag != "" {
+					cfg.APIKey = *apiKeyFlag
+				}
+				if *vpsIDFlag != "" {
+					cfg.VpsID = *vpsIDFlag
+				}
+				if *backendIPFlag != "" {
+					cfg.BackendIP = *backendIPFlag
+				}
+				if cfg.VpsID == "" || cfg.BackendIP == "" || cfg.APIKey == "" {
+					log.Fatalf("Error: Config requires all fields: --api-key, --vps-id, --backend-ip")
+				}
+				if err := SaveConfig(cfg); err != nil {
+					log.Fatalf("Could not save config: %v", err)
+				}
+				fmt.Println("Configuration saved to config.json.")
+			}
+		} else {
+			cfg, err := LoadConfig()
+			if err != nil || cfg.VpsID == "" {
+				log.Fatalf("Config file missing or invalid. Please configure the agent first.")
+			}
+			svc, err := setupService(cfg)
+			if err != nil {
+				log.Fatalf("Failed to setup service: %v", err)
+			}
+			err = service.Control(svc, firstArg)
+			if err != nil {
+				log.Fatalf("Valid actions: %q\n%v", service.ControlAction, err)
+			}
+			return
+		}
+	}
+
 	cfg, err := LoadConfig()
 	if err != nil || cfg.VpsID == "" {
 		// If no config, run wizard
@@ -37,15 +86,6 @@ func main() {
 	svc, err := setupService(cfg)
 	if err != nil {
 		log.Fatalf("Failed to setup service: %v", err)
-	}
-
-	// Handle standard service arguments if passed (e.g. agent install)
-	if len(os.Args) > 1 {
-		err = service.Control(svc, os.Args[1])
-		if err != nil {
-			log.Fatalf("Valid actions: %q\n%v", service.ControlAction, err)
-		}
-		return
 	}
 
 	// Determine if running as an interactive terminal

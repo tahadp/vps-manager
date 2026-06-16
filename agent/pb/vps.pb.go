@@ -32,6 +32,7 @@ type TelemetryRequest struct {
 	NetRx         float32                `protobuf:"fixed32,7,opt,name=net_rx,json=netRx,proto3" json:"net_rx,omitempty"`
 	Timestamp     int64                  `protobuf:"varint,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	DiskTotal     float32                `protobuf:"fixed32,9,opt,name=disk_total,json=diskTotal,proto3" json:"disk_total,omitempty"`
+	Uptime        int64                  `protobuf:"varint,10,opt,name=uptime,proto3" json:"uptime,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -125,6 +126,13 @@ func (x *TelemetryRequest) GetTimestamp() int64 {
 func (x *TelemetryRequest) GetDiskTotal() float32 {
 	if x != nil {
 		return x.DiskTotal
+	}
+	return 0
+}
+
+func (x *TelemetryRequest) GetUptime() int64 {
+	if x != nil {
+		return x.Uptime
 	}
 	return 0
 }
@@ -2216,7 +2224,7 @@ var File_vps_proto protoreflect.FileDescriptor
 
 const file_vps_proto_rawDesc = "" +
 	"\n" +
-	"\tvps.proto\x12\x03vps\"\x8a\x02\n" +
+	"\tvps.proto\x12\x03vps\"\xa2\x02\n" +
 	"\x10TelemetryRequest\x12\x15\n" +
 	"\x06vps_id\x18\x01 \x01(\tR\x05vpsId\x12\x1b\n" +
 	"\tcpu_usage\x18\x02 \x01(\x02R\bcpuUsage\x12\x1b\n" +
@@ -2228,7 +2236,9 @@ const file_vps_proto_rawDesc = "" +
 	"\x06net_rx\x18\a \x01(\x02R\x05netRx\x12\x1c\n" +
 	"\ttimestamp\x18\b \x01(\x03R\ttimestamp\x12\x1d\n" +
 	"\n" +
-	"disk_total\x18\t \x01(\x02R\tdiskTotal\"G\n" +
+	"disk_total\x18\t \x01(\x02R\tdiskTotal\x12\x16\n" +
+	"\x06uptime\x18\n" +
+	" \x01(\x03R\x06uptime\"G\n" +
 	"\x11TelemetryResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\"I\n" +

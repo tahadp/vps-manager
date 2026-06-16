@@ -24,7 +24,12 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
     networkVisible: true,
     telegramEnabled: true,
     customAlertMessage: '',
-    visibleCharts: ['cpu', 'ram', 'disk', 'network'] as string[]
+    visibleCharts: ['cpu', 'ram', 'disk', 'network'] as string[],
+    offlineTimeoutSec: 60,
+    offlineAlertEnabled: true,
+    onlineAlertEnabled: true,
+    customOfflineMessage: '',
+    customOnlineMessage: ''
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -42,7 +47,12 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
             networkVisible: d.networkVisible ?? true,
             telegramEnabled: d.telegramEnabled ?? true,
             customAlertMessage: d.customAlertMessage ?? '',
-            visibleCharts: d.visibleCharts ? JSON.parse(d.visibleCharts) : ['cpu', 'ram', 'disk', 'network']
+            visibleCharts: d.visibleCharts ? JSON.parse(d.visibleCharts) : ['cpu', 'ram', 'disk', 'network'],
+            offlineTimeoutSec: d.offlineTimeoutSec ?? 60,
+            offlineAlertEnabled: d.offlineAlertEnabled ?? true,
+            onlineAlertEnabled: d.onlineAlertEnabled ?? true,
+            customOfflineMessage: d.customOfflineMessage ?? '',
+            customOnlineMessage: d.customOnlineMessage ?? ''
           });
         }
         setLoading(false);
@@ -160,6 +170,67 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
                 className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm font-mono focus:outline-none focus:border-brand resize-none"
               />
               <div className="text-[10px] text-text-muted mt-1 text-right">{settings.customAlertMessage.length} / 500</div>
+            </div>
+          </div>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-6 backdrop-blur-xl shadow-sm">
+          <h2 className="text-sm font-bold text-text-primary mb-1 uppercase tracking-wider flex items-center gap-2"><Bell className="w-4 h-4" /> Heartbeat & Default Alerts</h2>
+          <p className="text-xs text-text-muted mb-4">Configure when the system considers the VPS offline and customize status messages.</p>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase">Heartbeat Offline Timeout (Seconds)</label>
+              <input type="number" min={5} max={3600} value={settings.offlineTimeoutSec} onChange={e => setSettings({ ...settings, offlineTimeoutSec: Math.max(5, Math.min(3600, Number(e.target.value))) })} className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm focus:outline-none focus:border-brand" />
+            </div>
+
+            <div className="border-t border-border-subtle pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="text-sm text-text-primary">Default Offline Alert</div>
+                  <div className="text-xs text-text-muted">Send alerts when the heartbeat is missed</div>
+                </div>
+                <button onClick={() => setSettings({ ...settings, offlineAlertEnabled: !settings.offlineAlertEnabled })} className={`w-10 h-5 rounded-full transition-colors ${settings.offlineAlertEnabled ? 'bg-brand' : 'bg-neutral-bg3'}`}>
+                  <span className={`block w-4 h-4 bg-white rounded-full transition-transform ${settings.offlineAlertEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+              {settings.offlineAlertEnabled && (
+                <div>
+                  <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase">Custom Offline Message</label>
+                  <textarea
+                    value={settings.customOfflineMessage}
+                    onChange={e => setSettings({ ...settings, customOfflineMessage: e.target.value })}
+                    placeholder="⚠️ VPS {{vpsName}} is OFFLINE — no heartbeat for {{offlineMinutes}}m"
+                    maxLength={500}
+                    rows={2}
+                    className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm font-mono focus:outline-none focus:border-brand resize-none"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border-subtle pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="text-sm text-text-primary">Default Online Alert (Recovery)</div>
+                  <div className="text-xs text-text-muted">Send recovery alerts when the VPS comes back online</div>
+                </div>
+                <button onClick={() => setSettings({ ...settings, onlineAlertEnabled: !settings.onlineAlertEnabled })} className={`w-10 h-5 rounded-full transition-colors ${settings.onlineAlertEnabled ? 'bg-brand' : 'bg-neutral-bg3'}`}>
+                  <span className={`block w-4 h-4 bg-white rounded-full transition-transform ${settings.onlineAlertEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+              {settings.onlineAlertEnabled && (
+                <div>
+                  <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase">Custom Online Message</label>
+                  <textarea
+                    value={settings.customOnlineMessage}
+                    onChange={e => setSettings({ ...settings, customOnlineMessage: e.target.value })}
+                    placeholder="✅ {{vpsName}} is back ONLINE"
+                    maxLength={500}
+                    rows={2}
+                    className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm font-mono focus:outline-none focus:border-brand resize-none"
+                  />
+                </div>
+              )}
             </div>
           </div>
         </motion.div>

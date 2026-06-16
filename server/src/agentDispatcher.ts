@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { logger } from './logger';
 import { prisma } from './prisma';
 import { redisPublisher } from './redis';
+import { handleVpsRecovery } from './alerting';
 
 type ServerWritableStream = any;
 
@@ -42,7 +43,7 @@ function rejectAllForVps(vpsId: string, reason: string) {
   }
 }
 
-export function registerAgentStream(vpsId: string, stream: ServerWritableStream) {
+export async function registerAgentStream(vpsId: string, stream: ServerWritableStream) {
   const previous = streamMap.get(vpsId);
   if (previous && previous !== stream) {
     try { previous.end(); } catch {}
@@ -50,20 +51,14 @@ export function registerAgentStream(vpsId: string, stream: ServerWritableStream)
   streamMap.set(vpsId, stream);
   logger.info({ vpsId, total: streamMap.size }, '[agentIO] stream registered');
 
-  // Set status to ONLINE immediately on registration
-  prisma.vps.update({
-    where: { id: vpsId },
-    data: { status: 'ONLINE' }
-  }).then((vps) => {
-    redisPublisher.publish(`vps_status:${vpsId}`, JSON.stringify({
-      vpsId,
-      status: 'ONLINE',
-      lastHeartbeat: vps.lastHeartbeat,
-      ipAddress: vps.ipAddress
-    }));
-  }).catch(err => {
+  try {
+    const vps = await prisma.vps.findUnique({ where: { id: vpsId } });
+    if (vps) {
+      await handleVpsRecovery(vpsId, new Date(), vps.ipAddress);
+    }
+  } catch (err) {
     logger.error({ err, vpsId }, 'Failed to set VPS ONLINE on stream register');
-  });
+  }
 }
 
 export function unregisterAgentStream(vpsId: string, stream: ServerWritableStream) {

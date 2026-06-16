@@ -184,7 +184,7 @@ func (m dashboardModel) View() string {
 			style = style.Foreground(lipgloss.Color("252"))
 		}
 		
-		b.WriteString(style.Render(fmt.Sprintf("%s%s\n", cursor, choice)))
+		b.WriteString(style.Render(fmt.Sprintf("%s%s", cursor, choice)) + "\n")
 	}
 
 	// Loading indicator

@@ -8,6 +8,7 @@ import (
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/net"
 )
@@ -21,6 +22,7 @@ type Metrics struct {
 	NetTx     float64
 	NetRx     float64
 	Timestamp int64
+	Uptime    uint64
 }
 
 var (
@@ -32,6 +34,11 @@ var (
 
 func CollectMetrics() (*Metrics, error) {
 	m := &Metrics{Timestamp: time.Now().Unix()}
+
+	hInfo, err := host.Info()
+	if err == nil {
+		m.Uptime = hInfo.Uptime
+	}
 
 	// CPU
 	cpuP, err := cpu.Percent(0, false)

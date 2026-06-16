@@ -65,6 +65,11 @@ model VpsSettings {
   telegramEnabled       Boolean  @default(true)
   customAlertMessage    String?
   visibleCharts         String?  @default("[\"cpu\",\"ram\",\"disk\",\"network\"]")
+  offlineTimeoutSec     Int      @default(60)
+  offlineAlertEnabled   Boolean  @default(true)
+  onlineAlertEnabled    Boolean  @default(true)
+  customOfflineMessage  String?
+  customOnlineMessage   String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

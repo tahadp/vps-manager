@@ -36,12 +36,17 @@ CREATE TABLE "Vps" (
     "ipAddress" TEXT NOT NULL,
     "os" "OsType" NOT NULL,
     "status" "VpsState" NOT NULL DEFAULT 'OFFLINE',
+    "apiKey" TEXT NOT NULL,
+    "lastHeartbeat" TIMESTAMP(3),
     "userId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Vps_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Vps_apiKey_key" ON "Vps"("apiKey");
 
 -- CreateTable
 CREATE TABLE "AuditLog" (
@@ -62,3 +67,35 @@ ALTER TABLE "Vps" ADD CONSTRAINT "Vps_userId_fkey" FOREIGN KEY ("userId") REFERE
 
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CreateTable
+CREATE TABLE "HistoricalMetric" (
+    "id" TEXT NOT NULL,
+    "vpsId" TEXT NOT NULL,
+    "cpu" DOUBLE PRECISION NOT NULL,
+    "ram" DOUBLE PRECISION NOT NULL,
+    "disk" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "timestamp" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "HistoricalMetric_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "VpsSettings" (
+    "id" TEXT NOT NULL,
+    "vpsId" TEXT NOT NULL,
+    "screenshotIntervalSec" INTEGER NOT NULL DEFAULT 30,
+    "telemetryIntervalSec" INTEGER NOT NULL DEFAULT 1,
+    "ramDiskVisible" BOOLEAN NOT NULL DEFAULT true,
+    "networkVisible" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "VpsSettings_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "VpsSettings_vpsId_key" ON "VpsSettings"("vpsId");
+
+-- AddForeignKey
+ALTER TABLE "VpsSettings" ADD CONSTRAINT "VpsSettings_vpsId_fkey" FOREIGN KEY ("vpsId") REFERENCES "Vps"("id") ON DELETE CASCADE ON UPDATE CASCADE;

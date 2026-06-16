@@ -143,10 +143,23 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
                 <p className="text-sm text-text-secondary mb-4">
                   Run the following command on your VPS to start the agent and connect it to your dashboard.
                 </p>
-                <div className="bg-black/50 p-3 rounded-lg overflow-x-auto">
-                  <code className="text-xs text-dataviz-blue whitespace-pre font-mono">
-                    {`go run main.go --api-key="${successData.apiKey}" --vps-id="${successData.id}" --backend-ip="YOUR_BACKEND_IP:50051"`}
-                  </code>
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-xs font-bold text-text-muted uppercase block mb-1">Linux / macOS:</span>
+                    <div className="bg-black/50 p-3 rounded-lg overflow-x-auto">
+                      <code className="text-xs text-dataviz-blue whitespace-pre font-mono">
+                        {`./vps-agent-linux --api-key="${successData.apiKey}" --vps-id="${successData.id}" --backend-ip="45.198.68.109:50051"`}
+                      </code>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-text-muted uppercase block mb-1">Windows:</span>
+                    <div className="bg-black/50 p-3 rounded-lg overflow-x-auto">
+                      <code className="text-xs text-dataviz-blue whitespace-pre font-mono">
+                        {`vps-agent.exe --api-key="${successData.apiKey}" --vps-id="${successData.id}" --backend-ip="45.198.68.109:50051"`}
+                      </code>
+                    </div>
+                  </div>
                 </div>
               </div>
               <button
