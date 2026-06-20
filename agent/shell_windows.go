@@ -5,6 +5,7 @@ package main
 import (
 	"io"
 	"os/exec"
+	"time"
 )
 
 type shellSession struct {
@@ -66,8 +67,21 @@ func (s *shellSession) Read(buf []byte) (int, error) {
 	return s.reader.Read(buf)
 }
 
+// SetReadDeadline is a no-op on Windows because the pipe-backed reader
+// does not support deadlines. Shutdown unblocks Read via Close()
+// instead. Returning nil keeps the pump loop's error-handling uniform
+// across platforms; returning a non-nil error would falsely signal
+// an I/O failure.
+func (s *shellSession) SetReadDeadline(time.Time) error {
+	return nil
+}
+
 func (s *shellSession) Close() error {
-	_ = s.stdin.Close()
-	_ = s.reader.Close()
+	if s.stdin != nil {
+		_ = s.stdin.Close()
+	}
+	if s.reader != nil {
+		_ = s.reader.Close()
+	}
 	return nil
 }

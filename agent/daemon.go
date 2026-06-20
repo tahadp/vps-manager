@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -52,7 +53,11 @@ func applySettings(s *pb.VpsSettingsMessage) {
     log.Printf("Settings applied: telemetry=%v screenshot=%v", settings.telemetryInterval, settings.screenshotInterval)
 }
 
-func getLocalOutboundIP() string {
+// getLocalOutboundIP returns the source IP the OS would use for an
+// outbound UDP packet. It is a method so it can observe the agent's
+// shutdown context; the underlying net.Dial does not accept a
+// context, so we use a short, fixed timeout.
+func (p *program) getLocalOutboundIP() string {
 	conn, err := net.DialTimeout("udp", "8.8.8.8:80", 2*time.Second)
 	if err != nil {
 		log.Printf("getLocalOutboundIP: dial failed: %v", err)
@@ -67,29 +72,59 @@ func getLocalOutboundIP() string {
 	return localAddr.IP.String()
 }
 
-func getOutboundIP() string {
-	// Try fetching public IP first
-	client := http.Client{
-		Timeout: 2 * time.Second,
+// ipLookupURLs is the list of HTTPS endpoints the agent polls in
+// order to discover its public IP. It is a package-level var so tests
+// can swap in a httptest server without touching the real network.
+// Endpoints are tried in order; the first one that returns a valid
+// IP wins.
+var ipLookupURLs = []string{
+	"https://api.ipify.org",
+	"https://ifconfig.me/ip",
+}
+
+// getOutboundIP reports the agent's public IP. It is ctx-aware so a
+// shutdown signal preempts the in-flight HTTP request rather than
+// waiting for the per-request timeout to elapse.
+func (p *program) getOutboundIP() string {
+	if p == nil || p.ctx == nil {
+		return p.getLocalOutboundIP()
 	}
-	urls := []string{
-		"https://api.ipify.org",
-		"https://ifconfig.me/ip",
-	}
+	urls := ipLookupURLs
 	for _, url := range urls {
-		resp, err := client.Get(url)
-		if err == nil {
-			defer resp.Body.Close()
-			bytes, err := io.ReadAll(resp.Body)
-			if err == nil {
-				ip := strings.TrimSpace(string(bytes))
-				if net.ParseIP(ip) != nil {
-					return ip
-				}
-			}
+		ip := p.fetchPublicIP(url)
+		if ip != "" {
+			return ip
 		}
 	}
-	return getLocalOutboundIP()
+	return p.getLocalOutboundIP()
+}
+
+// fetchPublicIP issues a single ctx-bound GET to url and returns the
+// trimmed response body if it parses as a valid IP. Returns "" on
+// any error or invalid response, including ctx cancellation.
+func (p *program) fetchPublicIP(url string) string {
+	req, err := http.NewRequestWithContext(p.ctx, http.MethodGet, url, nil)
+	if err != nil {
+		log.Printf("getOutboundIP: build request %s: %v", url, err)
+		return ""
+	}
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("getOutboundIP: GET %s: %v", url, err)
+		return ""
+	}
+	defer resp.Body.Close()
+	bytes, err := io.ReadAll(io.LimitReader(resp.Body, 256))
+	if err != nil {
+		log.Printf("getOutboundIP: read %s: %v", url, err)
+		return ""
+	}
+	ip := strings.TrimSpace(string(bytes))
+	if net.ParseIP(ip) == nil {
+		return ""
+	}
+	return ip
 }
 
 // validateVpsId rejects empty/missing/oversized VPS IDs at the handler entry
@@ -191,7 +226,7 @@ func (p *program) run() {
     backendClient := pb.NewBackendServiceClient(conn)
 
     p.ipMu.Lock()
-    p.agentIP = getOutboundIP()
+    p.agentIP = p.getOutboundIP()
     p.ipMu.Unlock()
     log.Printf("Initial agent IP: %s", p.agentIP)
 
@@ -216,7 +251,7 @@ func (p *program) ipRefreshLoop() {
         case <-p.ctx.Done():
             return
         case <-ticker.C:
-            newIP := getOutboundIP()
+            newIP := p.getOutboundIP()
             if newIP == "" {
                 log.Printf("ipRefreshLoop: detection returned empty, keeping previous value")
                 continue
@@ -758,11 +793,21 @@ func (p *program) handleShellOpen(stream pb.BackendService_StreamAgentIOClient, 
 	go p.pumpShellOutput(stream, req.SessionId, sess)
 }
 
+// pumpShellOutput reads from a shell session and forwards each chunk
+// to the server-side IO stream. The inner Read loop sets a 5-second
+// read deadline so a quiet shell (no output for 5s) wakes the loop
+// and lets the outer select re-check p.ctx. Without the deadline, a
+// silent process would wedge the goroutine until sess.Close()
+// happens — which only fires from the ctx-cancel path itself,
+// creating a feedback loop where ctx cancel waits for the pump
+// to drain, but the pump is blocked on Read.
 func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, sessionId string, sess *shellSession) {
 	buf := make([]byte, 4096)
 	readErrCh := make(chan error, 1)
+	const readDeadline = 5 * time.Second
 	go func() {
 		for {
+			_ = sess.SetReadDeadline(time.Now().Add(readDeadline))
 			n, err := sess.Read(buf)
 			if n > 0 {
 				if !p.sendIO(&pb.AgentMessage{
@@ -775,6 +820,14 @@ func (p *program) pumpShellOutput(stream pb.BackendService_StreamAgentIOClient, 
 				}
 			}
 			if err != nil {
+				// The "read deadline exceeded" sentinel is the
+				// expected outcome of a quiet shell — re-arm the
+				// deadline and keep pumping. Only terminal
+				// errors (EOF, ctx-cancel surfaced as a closed
+				// handle) propagate to the outer select.
+				if errors.Is(err, os.ErrDeadlineExceeded) {
+					continue
+				}
 				readErrCh <- err
 				return
 			}
