@@ -29,7 +29,9 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 
-app.set('trust proxy', 1);
+// Trust proxy: Coolify uses Traefik (1 hop) + Docker networking (1 hop).
+// Setting to 2 ensures req.ip resolves to the real client IP, not the proxy.
+app.set('trust proxy', 2);
 
 if (!process.env.JWT_SECRET) {
   throw new Error("FATAL ERROR: JWT_SECRET environment variable is missing.");

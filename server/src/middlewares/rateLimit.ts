@@ -11,6 +11,9 @@ interface RateLimitOptions {
 }
 
 const defaultKeyGenerator = (req: Request): string => {
+  // req.ip respects 'trust proxy' setting. As a safety net, also check
+  // X-Forwarded-For header for the leftmost (client) IP when behind
+  // multi-layer proxies like Coolify (nginx → container).
   return req.ip || req.socket.remoteAddress || 'unknown';
 };
 

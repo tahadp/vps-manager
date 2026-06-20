@@ -145,26 +145,28 @@ export default function AdminUsers() {
         </div>
       )}
 
-      <Modal
-        isOpen={!!confirm}
-        onClose={() => setConfirm(null)}
-        title="Confirm"
-        actions={
-          <>
-            <button onClick={() => setConfirm(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
-            <button
-              onClick={() => { updateStatus(confirm!.id, confirm!.status); setConfirm(null); }}
-              className={`px-4 py-2 text-sm text-white rounded-xl ${confirm!.status === 'BANNED' ? 'bg-status-error hover:bg-status-error/80' : 'bg-status-success hover:bg-status-success/80'}`}
-            >
-              {confirm!.status === 'BANNED' ? 'Ban' : 'Approve'}
-            </button>
-          </>
-        }
-      >
-        <p className="text-text-primary text-sm">
-          {confirm?.status === 'BANNED' ? `Ban ${confirm.name}? They won't be able to log in.` : `Approve ${confirm?.name}?`}
-        </p>
-      </Modal>
+      {confirm && (
+        <Modal
+          isOpen
+          onClose={() => setConfirm(null)}
+          title="Confirm"
+          actions={
+            <>
+              <button onClick={() => setConfirm(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
+              <button
+                onClick={() => { updateStatus(confirm.id, confirm.status); setConfirm(null); }}
+                className={`px-4 py-2 text-sm text-white rounded-xl ${confirm.status === 'BANNED' ? 'bg-status-error hover:bg-status-error/80' : 'bg-status-success hover:bg-status-success/80'}`}
+              >
+                {confirm.status === 'BANNED' ? 'Ban' : 'Approve'}
+              </button>
+            </>
+          }
+        >
+          <p className="text-text-primary text-sm">
+            {confirm.status === 'BANNED' ? `Ban ${confirm.name}? They won't be able to log in.` : `Approve ${confirm.name}?`}
+          </p>
+        </Modal>
+      )}
 
       <div className="bg-neutral-bg2/40 border border-border-subtle rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
