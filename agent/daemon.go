@@ -82,13 +82,76 @@ var ipLookupURLs = []string{
 	"https://ifconfig.me/ip",
 }
 
-// getOutboundIP reports the agent's public IP. It is ctx-aware so a
-// shutdown signal preempts the in-flight HTTP request rather than
-// waiting for the per-request timeout to elapse.
+// getAllInterfaceIPs returns a comma-separated list of all non-loopback
+// IPv4 addresses across all UP network interfaces. Used to populate
+// the agent_ip field on heartbeats so the server can show primary +
+// secondary IPs (AGENTS F4.3 multi-NIC aggregation).
+//
+// Order: enumerated in net.Interfaces() order (kernel order, deterministic
+// for tests). Loopback and down interfaces are skipped. IPv6 link-local
+// (fe80::/10) and IPv6 ULA (fc00::/7) are also skipped — they don't
+// help the server's reachability check.
+//
+// Returns "" if no eligible interface is found.
+func getAllInterfaceIPs() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		log.Printf("getAllInterfaceIPs: net.Interfaces failed: %v", err)
+		return ""
+	}
+	var ips []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			default:
+				continue
+			}
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			// IPv4 only for the multi-NIC aggregation; IPv6 link-local
+			// and ULA addresses are out of scope (see doc comment).
+			v4 := ip.To4()
+			if v4 == nil {
+				continue
+			}
+			ips = append(ips, v4.String())
+		}
+	}
+	return strings.Join(ips, ",")
+}
+
+// getOutboundIP reports the IPs to send on heartbeats. Order:
+//  1. getAllInterfaceIPs() (multi-NIC aggregation, comma-separated)
+//  2. fetchPublicIP (single public IP via api.ipify.org etc.)
+//  3. getLocalOutboundIP (kernel routing table single IP)
+//
+// Step 1 is preferred so the server can show primary + secondary IPs.
+// Steps 2-3 are kept as fallback for environments where
+// net.Interfaces() returns nothing (e.g. heavily restricted containers).
 func (p *program) getOutboundIP() string {
 	if p == nil || p.ctx == nil {
 		return p.getLocalOutboundIP()
 	}
+	if multi := getAllInterfaceIPs(); multi != "" {
+		return multi
+	}
+	// Fallback: single public IP lookup
 	urls := ipLookupURLs
 	for _, url := range urls {
 		ip := p.fetchPublicIP(url)
