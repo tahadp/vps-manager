@@ -3,7 +3,9 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Shield, Search, Filter, CheckCircle2, Ban, Server as ServerIcon, Mail, Calendar, AlertTriangle } from "lucide-react";
+import { Modal } from "@/components/Modal";
 import { api, getStoredUser } from "@/lib/api";
+import { TierSelect } from "@/components/admin/TierSelect";
 
 export default function AdminUsers() {
   const router = useRouter();
@@ -143,24 +145,26 @@ export default function AdminUsers() {
         </div>
       )}
 
-      {confirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setConfirm(null)}>
-          <div className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <p className="text-text-primary text-sm mb-6">
-              {confirm.status === 'BANNED' ? `Ban ${confirm.name}? They won't be able to log in.` : `Approve ${confirm.name}?`}
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirm(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
-              <button
-                onClick={() => { updateStatus(confirm.id, confirm.status); setConfirm(null); }}
-                className={`px-4 py-2 text-sm text-white rounded-xl ${confirm.status === 'BANNED' ? 'bg-status-error hover:bg-status-error/80' : 'bg-status-success hover:bg-status-success/80'}`}
-              >
-                {confirm.status === 'BANNED' ? 'Ban' : 'Approve'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={!!confirm}
+        onClose={() => setConfirm(null)}
+        title="Confirm"
+        actions={
+          <>
+            <button onClick={() => setConfirm(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
+            <button
+              onClick={() => { updateStatus(confirm!.id, confirm!.status); setConfirm(null); }}
+              className={`px-4 py-2 text-sm text-white rounded-xl ${confirm!.status === 'BANNED' ? 'bg-status-error hover:bg-status-error/80' : 'bg-status-success hover:bg-status-success/80'}`}
+            >
+              {confirm!.status === 'BANNED' ? 'Ban' : 'Approve'}
+            </button>
+          </>
+        }
+      >
+        <p className="text-text-primary text-sm">
+          {confirm?.status === 'BANNED' ? `Ban ${confirm.name}? They won't be able to log in.` : `Approve ${confirm?.name}?`}
+        </p>
+      </Modal>
 
       <div className="bg-neutral-bg2/40 border border-border-subtle rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -203,15 +207,11 @@ export default function AdminUsers() {
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <select
+                    <TierSelect
                       value={u.tier || 'FREE'}
-                      onChange={e => updateTier(u.id, e.target.value as 'FREE' | 'PRO')}
+                      onChange={(tier) => updateTier(u.id, tier)}
                       disabled={u.id === user.id}
-                      className="px-2 py-1 text-xs bg-neutral-bg1 border border-border-subtle rounded-lg text-text-primary focus:outline-none focus:border-brand disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <option value="FREE">FREE</option>
-                      <option value="PRO">PRO</option>
-                    </select>
+                    />
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-xs text-text-secondary flex items-center gap-1"><ServerIcon className="w-3 h-3" /> {vpsCount[u.id] || 0}</span>

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { TerminalSquare, Maximize2, X, WifiOff } from 'lucide-react';
+import { useInView } from '@/hooks/useInView';
 
 interface ScreenViewProps {
   vpsId: string;
@@ -11,14 +12,16 @@ interface ScreenViewProps {
 
 export default function ScreenView({ vpsId, imageData, isOffline, className }: ScreenViewProps) {
   const [expanded, setExpanded] = useState(false);
+  const [screenshotRef, inView] = useInView();
 
   return (
     <>
       <div
+        ref={screenshotRef}
         className={`relative cursor-pointer group overflow-hidden ${className || 'w-full h-36 bg-black/50 border-y border-border-subtle flex items-center justify-center'}`}
-        onClick={() => imageData && setExpanded(true)}
+        onClick={() => imageData && inView && setExpanded(true)}
       >
-        {imageData ? (
+        {imageData && inView ? (
           <React.Fragment key={imageData.slice(0, 32)}>
             <img
               src={`data:image/jpeg;base64,${imageData}`}

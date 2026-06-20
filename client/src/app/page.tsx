@@ -10,13 +10,16 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { AddVpsModal } from '@/components/vps/AddVpsModal';
+import { Modal } from '@/components/Modal';
 import RefreshButton from '@/components/vps/RefreshButton';
 import { useSocket } from '@/lib/socket';
 import { api, getStoredUser, setStoredUser } from '@/lib/api';
+import { useInView } from '@/hooks/useInView';
 
 function SortableVpsCard(props: any) {
   const { vps, isSelected, m, screenshots, toggleSelect, router } = props;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: vps.id });
+  const [screenshotRef, inView] = useInView();
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -72,10 +75,11 @@ function SortableVpsCard(props: any) {
       </div>
 
       <div
+        ref={screenshotRef}
         className="w-full h-36 bg-black/50 border-y border-border-subtle overflow-hidden flex items-center justify-center relative cursor-pointer group-hover:border-border-DEFAULT transition-colors"
         onClick={() => router.push(`/vps/${vps.id}`)}
       >
-        {screenshots[vps.id] ? (
+        {screenshots[vps.id] && inView ? (
           <img
             src={`data:image/jpeg;base64,${screenshots[vps.id]}`}
             alt="Screenshot"
@@ -84,8 +88,14 @@ function SortableVpsCard(props: any) {
           />
         ) : (
           <div className="flex flex-col items-center text-text-muted/50 gap-2">
-            <Eye className="w-6 h-6" />
-            <span className="text-xs">No display signal</span>
+            {screenshots[vps.id] ? (
+              <div className="w-full h-full bg-neutral-bg3 animate-pulse" />
+            ) : (
+              <>
+                <Eye className="w-6 h-6" />
+                <span className="text-xs">No display signal</span>
+              </>
+            )}
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
@@ -431,17 +441,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      {confirmBulk && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setConfirmBulk(null)}>
-          <div className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <p className="text-text-primary text-sm mb-6">{confirmBulk.message}</p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirmBulk(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
-              <button onClick={() => executeBulkCommand(confirmBulk.action)} className="px-4 py-2 text-sm bg-brand hover:bg-brand-hover text-white rounded-xl">Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={!!confirmBulk}
+        onClose={() => setConfirmBulk(null)}
+        title="Confirm"
+        actions={
+          <>
+            <button onClick={() => setConfirmBulk(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
+            <button onClick={() => executeBulkCommand(confirmBulk!.action)} className="px-4 py-2 text-sm bg-brand hover:bg-brand-hover text-white rounded-xl">Confirm</button>
+          </>
+        }
+      >
+        <p className="text-text-primary text-sm">{confirmBulk?.message}</p>
+      </Modal>
 
       {vpsList.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-32 text-text-muted border border-dashed border-border-strong rounded-3xl bg-neutral-bg1/50">
