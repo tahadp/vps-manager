@@ -5,6 +5,8 @@
 .env.test.local
 .env.production.local
 .env.*
+!.env.example
+!server/.env.example
 
 # AI Skills
 .agent/skills
