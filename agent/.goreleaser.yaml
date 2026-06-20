@@ -1,0 +1,84 @@
+# goreleaser config for vps-agent.
+#
+# Used by `goreleaser release` (tagged) and `goreleaser build` (local snapshot).
+# Release pipeline (audit batch 2) is intentionally NOT wired in Coolify yet;
+# this file is the source of truth for the eventual GitHub Actions release job.
+#
+# Pre-reqs on the release host:
+#   - Go 1.25 toolchain
+#   - CGO toolchain for each target OS (gcc + libutil-dev on linux/darwin)
+#   - GITHUB_TOKEN env var (only required for `release`, not `build`)
+#
+# Validate locally without a release:
+#   goreleaser check
+#   goreleaser build --snapshot --clean
+
+version: 2
+
+project_name: vps-agent
+
+before:
+  hooks:
+    # Keep go.mod / go.sum tidy before builds so release artifacts are reproducible.
+    - go mod tidy
+
+builds:
+  - id: vps-agent
+    main: .
+    binary: vps-agent
+    env:
+      # creack/pty links against platform C libraries (libutil on Linux/macOS,
+      # ConPTY on Windows). CGO_ENABLED=0 would fail to link.
+      - CGO_ENABLED=1
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Go toolchain does not support windows/arm64.
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      # -s -w: strip symbol table + debug info.
+      # -X main.version / -X main.commit: inject build metadata.
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+    flags:
+      # Reproducible builds: strip local filesystem paths from the binary.
+      - -trimpath
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    # vps-agent_1.2.3_linux_amd64.tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE*
+
+snapshot:
+  # `goreleaser build --snapshot` produces 1.0.0-next, 1.0.1-next, ...
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: git
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+
+release:
+  github:
+    owner: tahadp
+    name: vps-manager
+  draft: false
+  prerelease: auto
