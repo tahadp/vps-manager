@@ -20,7 +20,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const HEARTBEAT_TTL_MS = 60_000;
 const HEARTBEAT_PRUNE_INTERVAL_MS = 30_000;
 
-function pruneStaleHeartbeats() {
+export function pruneStaleHeartbeats() {
   const now = Date.now();
   for (const [vpsId, ts] of heartbeatMap) {
     if (now - ts > HEARTBEAT_TTL_MS) heartbeatMap.delete(vpsId);

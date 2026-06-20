@@ -68,7 +68,7 @@ export const pushNotification = async (userId: string, notification: {
 
 let activeRules: any[] = [];
 
-const refreshRules = async () => {
+export const refreshRules = async () => {
   try {
     activeRules = await prisma.alertRule.findMany();
   } catch (err) {
