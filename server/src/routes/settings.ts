@@ -3,6 +3,7 @@ import { prisma } from '../prisma';
 import { requireAuth, AuthRequest } from '../middlewares/authMiddleware';
 import { validate } from '../middlewares/validation';
 import { logAudit } from '../middlewares/audit';
+import { encryptSecret, decryptSecret } from '../crypto';
 import { z } from 'zod';
 import axios from 'axios';
 
@@ -14,9 +15,9 @@ settingsRouter.get('/telegram', async (req: AuthRequest, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    
+
     res.json({
-      telegramBotToken: user.telegramBotToken || '',
+      telegramBotToken: user.telegramBotToken ? decryptSecret(user.telegramBotToken) : '',
       telegramChatId: user.telegramChatId || ''
     });
   } catch (error) {
@@ -24,12 +25,23 @@ settingsRouter.get('/telegram', async (req: AuthRequest, res) => {
   }
 });
 
-settingsRouter.post('/telegram', async (req: AuthRequest, res) => {
-  const { telegramBotToken, telegramChatId } = req.body;
+const telegramSchema = z.object({
+  telegramBotToken: z.string().max(200).optional().default(''),
+  telegramChatId: z.string().max(50).optional().default(''),
+});
+
+settingsRouter.post('/telegram', validate(telegramSchema), async (req: AuthRequest, res) => {
   try {
+    const data: any = {};
+    if (req.body.telegramBotToken !== undefined) {
+      data.telegramBotToken = req.body.telegramBotToken ? encryptSecret(req.body.telegramBotToken) : null;
+    }
+    if (req.body.telegramChatId !== undefined) {
+      data.telegramChatId = req.body.telegramChatId;
+    }
     await prisma.user.update({
       where: { id: req.user!.id },
-      data: { telegramBotToken, telegramChatId }
+      data
     });
     await logAudit({ userId: req.user!.id, action: 'TELEGRAM_CONFIG_CHANGED', target: req.user!.id });
     res.json({ message: 'Telegram config updated successfully' });
@@ -45,11 +57,12 @@ settingsRouter.post('/telegram/test', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Please save your Telegram credentials first.' });
     }
 
-    const response = await axios.post(`https://api.telegram.org/bot${user.telegramBotToken}/sendMessage`, {
+    const token = decryptSecret(user.telegramBotToken);
+    const response = await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
       chat_id: user.telegramChatId,
       text: '✅ VPS Manager: Test notification successful! The alerting engine is now ready to send alerts here.',
     });
-    
+
     if (response.data.ok) {
       res.json({ message: 'Test message sent successfully!' });
     } else {

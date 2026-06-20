@@ -7,6 +7,7 @@ import { io } from './socket';
 import { logger } from './logger';
 import { metrics as m } from './metrics-prom';
 import { logIpChangeIfChanged } from './middlewares/audit';
+import { decryptSecret } from './crypto';
 
 export const sendTelegramAlert = async (userId: string, message: string) => {
   try {
@@ -20,8 +21,10 @@ export const sendTelegramAlert = async (userId: string, message: string) => {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.telegramBotToken || !user.telegramChatId) return;
 
+    const token = decryptSecret(user.telegramBotToken);
+
     try {
-      const res = await axios.post(`https://api.telegram.org/bot${user.telegramBotToken}/sendMessage`, {
+      const res = await axios.post(`https://api.telegram.org/bot${token}/sendMessage`, {
         chat_id: user.telegramChatId,
         text: message,
       }, { timeout: 5000 });
