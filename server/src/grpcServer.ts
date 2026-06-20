@@ -29,6 +29,26 @@ import { prisma } from './prisma';
 import { logIpChangeIfChanged } from './middlewares/audit';
 import { registerAgentStream, unregisterAgentStream, resolveAgentResponse, handleShellOutput, recordHeartbeat } from './agentDispatcher';
 
+// parseAgentIPs splits a comma-separated agent_ip value into a JSON array
+// of trimmed, non-empty IP strings. Returns null for empty or single-IP
+// (no comma) input — in that case the caller falls back to writing
+// ipAddress only.
+//
+// Examples:
+//   ""                      -> null
+//   "192.168.1.10"          -> null
+//   "192.168.1.10,10.0.0.5" -> '["192.168.1.10","10.0.0.5"]'
+//   "192.168.1.10, ,10.0.0.5" -> '["192.168.1.10","10.0.0.5"]' (whitespace tolerated)
+export function parseAgentIPs(agentIp: string | undefined | null): string | null {
+  if (!agentIp) return null;
+  const parts = agentIp
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length < 2) return null;
+  return JSON.stringify(parts);
+}
+
 const checkApiKey = async (call: any, callback?: any) => {
   const apiKey = call.metadata.get('x-api-key')[0];
   if (!apiKey) {
@@ -110,9 +130,10 @@ server.addService(vpsPackage.BackendService.service, {
         peerIp = peer;
       }
       const agentIp = (call.request && call.request.agent_ip) || peerIp;
+      const ipAddressesJson = parseAgentIPs(agentIp);
       const now = new Date();
 
-      await handleVpsRecovery(call.authenticatedVpsId, now, agentIp);
+      await handleVpsRecovery(call.authenticatedVpsId, now, agentIp, ipAddressesJson);
 
       let settingsMessage: any = null;
       try {
@@ -202,9 +223,13 @@ server.addService(vpsPackage.BackendService.service, {
           const req = msg.register;
           if (req.agent_ip) {
             await logIpChangeIfChanged(boundVpsId, req.agent_ip);
+            const registerIpAddressesJson = parseAgentIPs(req.agent_ip);
             await prisma.vps.update({
               where: { id: boundVpsId },
-              data: { ipAddress: req.agent_ip }
+              data: {
+                ipAddress: req.agent_ip,
+                ...(registerIpAddressesJson !== null ? { ipAddresses: registerIpAddressesJson } : {})
+              }
             }).catch((e) => logger.error({ err: e, vpsId: boundVpsId }, 'Failed to update agent_ip'));
           }
           registerAgentStream(boundVpsId, call);

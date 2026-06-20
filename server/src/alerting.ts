@@ -76,7 +76,7 @@ export const refreshRules = async () => {
   }
 };
 
-export const handleVpsRecovery = async (vpsId: string, now: Date, agentIp: string) => {
+export const handleVpsRecovery = async (vpsId: string, now: Date, agentIp: string, ipAddressesJson: string | null = null) => {
   try {
     const vps = await prisma.vps.findUnique({
       where: { id: vpsId },
@@ -93,7 +93,8 @@ export const handleVpsRecovery = async (vpsId: string, now: Date, agentIp: strin
       data: {
         status: 'ONLINE',
         lastHeartbeat: now,
-        ipAddress: agentIp
+        ipAddress: agentIp,
+        ...(ipAddressesJson !== undefined ? { ipAddresses: ipAddressesJson } : {})
       }
     });
 
