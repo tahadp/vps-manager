@@ -137,7 +137,7 @@ export const handleVpsRecovery = async (vpsId: string, now: Date, agentIp: strin
 };
 
 export const initAlertingEngine = () => {
-  console.log('Dynamic Alerting Engine Initialized');
+  logger.info('Dynamic Alerting Engine Initialized');
   
   // Refresh rules every 30 seconds
   refreshRules();

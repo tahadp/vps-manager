@@ -116,7 +116,7 @@ app.get('/health/ready', async (_req, res) => {
 initWebSocket(server);
 
 server.listen(PORT, () => {
-  console.log(`HTTP/WebSocket Server is running on port ${PORT} (gRPC port: ${GRPC_PORT})`);
+  logger.info({ httpPort: PORT, grpcPort: GRPC_PORT }, 'HTTP/WebSocket server started');
   startGrpcServer();
   initAlertingEngine();
   startMetricsPruneInterval();
