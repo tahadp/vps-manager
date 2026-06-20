@@ -9,11 +9,11 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "dev": "ts-node src/index.ts",
-    "build:proto": "node scripts/sync-proto.js",
+    "proto:sync": "node scripts/sync-proto.js",
     "proto:check": "node scripts/sync-proto.js --check",
     "build:tsc": "tsc",
     "build:copyproto": "node -e \"const fs=require('fs'),path=require('path');const s=path.join(__dirname,'proto'),d=path.join(__dirname,'dist','proto');fs.mkdirSync(d,{recursive:true});for(const f of fs.readdirSync(s)){fs.copyFileSync(path.join(s,f),path.join(d,f));}\"",
-    "build": "prisma generate && npm run build:proto && npm run build:tsc && npm run build:copyproto",
+    "build": "prisma generate && npm run proto:sync && npm run build:tsc && npm run build:copyproto",
     "start": "node dist/index.js"
   },
   "keywords": [],
