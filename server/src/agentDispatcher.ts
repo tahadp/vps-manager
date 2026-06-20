@@ -18,7 +18,6 @@ const heartbeatMap = new Map<string, number>();
 const pendingRequests = new Map<string, PendingRequest>();
 const DEFAULT_TIMEOUT_MS = 30_000;
 const HEARTBEAT_TTL_MS = 60_000;
-const HEARTBEAT_PRUNE_INTERVAL_MS = 30_000;
 
 export function pruneStaleHeartbeats() {
   const now = Date.now();
@@ -26,8 +25,6 @@ export function pruneStaleHeartbeats() {
     if (now - ts > HEARTBEAT_TTL_MS) heartbeatMap.delete(vpsId);
   }
 }
-
-setInterval(pruneStaleHeartbeats, HEARTBEAT_PRUNE_INTERVAL_MS).unref();
 
 export function recordHeartbeat(vpsId: string): void {
   heartbeatMap.set(vpsId, Date.now());

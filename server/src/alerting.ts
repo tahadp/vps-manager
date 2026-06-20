@@ -141,11 +141,8 @@ export const handleVpsRecovery = async (vpsId: string, now: Date, agentIp: strin
 
 export const initAlertingEngine = () => {
   logger.info('Dynamic Alerting Engine Initialized');
-  
-  // Refresh rules every 30 seconds
   refreshRules();
-  setInterval(refreshRules, 30000);
-  
+
   // Offline detection: mark VPS as OFFLINE if no heartbeat for dynamic timeout
   setInterval(async () => {
     try {
