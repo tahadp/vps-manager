@@ -9,6 +9,7 @@
 #   make build-all     Build for both Linux and Windows
 #   make test          Run unit tests with race detector and coverage
 #   make vet           Run go vet
+#   make lint          Run golangci-lint (https://golangci-lint.run)
 #   make clean         Remove build artifacts and coverage output
 #
 # Notes:
@@ -30,7 +31,7 @@ LDFLAGS    := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help proto build build-linux build-windows build-all test vet clean
+.PHONY: help proto build build-linux build-windows build-all test vet lint clean
 
 help: ## Show this help
 	@echo "VPS Agent (Go) build pipeline"
@@ -63,6 +64,10 @@ test: ## Run all Go tests with race detector and coverage
 
 vet: ## Run go vet
 	$(GO) vet ./...
+
+lint: ## Run golangci-lint
+	@command -v golangci-lint >/dev/null 2>&1 || (echo "ERROR: golangci-lint not found. Install: https://golangci-lint.run/welcome/install" && exit 1)
+	golangci-lint run ./...
 
 clean: ## Remove bin/ and cover.out
 	rm -rf bin/ cover.out
