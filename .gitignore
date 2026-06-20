@@ -15,6 +15,8 @@ NUL
 
 # Tests
 /tests
+coverage/
+*.cover.out
 
 # Node
 node_modules/
@@ -46,8 +48,9 @@ Thumbs.db
 !README.md
 AGENTS.md
 proje.md
-task.md
+CONTRIBUTING.md
 implementation_plan.md
+task.md
 
 # Database (Prisma local dev)
 /server/prisma/dev.db
@@ -55,14 +58,13 @@ implementation_plan.md
 
 # Build / Tooling
 /agent/dist
-/agent/coverage.out
-/agent/cover.out
 protoc/
 
-# OpenCode skill sessions
+# OpenCode & Planner sessions
 .opencode/
+.omo/
 
-# Test coverage outputs
+# Test coverage outputs (legacy paths)
 server/coverage/
 client/coverage/
 
