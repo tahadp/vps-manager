@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Save, Settings as SettingsIcon, Cpu, MemoryStick, HardDrive, Network, MessageCircle, Bell } from 'lucide-react';
+import { ArrowLeft, Save, Settings as SettingsIcon, Cpu, MemoryStick, HardDrive, Network, MessageCircle, Bell, Wrench, Server } from 'lucide-react';
 import { api, getStoredUser } from '@/lib/api';
 
 const CHART_OPTIONS = [
@@ -23,7 +23,6 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
     ramDiskVisible: true,
     networkVisible: true,
     telegramEnabled: true,
-    customAlertMessage: '',
     visibleCharts: ['cpu', 'ram', 'disk', 'network'] as string[],
     offlineTimeoutSec: 60,
     offlineAlertEnabled: true,
@@ -31,12 +30,24 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
     customOfflineMessage: '',
     customOnlineMessage: ''
   });
+  const [vpsName, setVpsName] = useState('');
+  const [isMaintenance, setIsMaintenance] = useState(false);
+  const [originalStatus, setOriginalStatus] = useState('OFFLINE');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     if (!getStoredUser()) { router.push('/login'); return; }
+    api<any>(`/api/vps/${id}`)
+      .then((vpsData) => {
+        if (vpsData) {
+          setVpsName(vpsData.name || '');
+          setIsMaintenance(vpsData.status === 'MAINTENANCE');
+          setOriginalStatus(vpsData.status || 'OFFLINE');
+        }
+      })
+      .catch(() => {});
     api<any>(`/api/vps/${id}/settings`)
       .then((d) => {
         if (d) {
@@ -46,7 +57,6 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
             ramDiskVisible: d.ramDiskVisible ?? true,
             networkVisible: d.networkVisible ?? true,
             telegramEnabled: d.telegramEnabled ?? true,
-            customAlertMessage: d.customAlertMessage ?? '',
             visibleCharts: d.visibleCharts ? JSON.parse(d.visibleCharts) : ['cpu', 'ram', 'disk', 'network'],
             offlineTimeoutSec: d.offlineTimeoutSec ?? 60,
             offlineAlertEnabled: d.offlineAlertEnabled ?? true,
@@ -74,6 +84,15 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
       await api(`/api/vps/${id}/settings`, {
         method: 'PUT',
         json: settings
+      });
+      const vpsUpdateBody: any = { name: vpsName };
+      const wasMaintenance = originalStatus === 'MAINTENANCE';
+      if (isMaintenance !== wasMaintenance) {
+        vpsUpdateBody.status = isMaintenance ? 'MAINTENANCE' : 'OFFLINE';
+      }
+      await api(`/api/vps/${id}`, {
+        method: 'PUT',
+        json: vpsUpdateBody
       });
       setMsg({ type: 'success', message: 'Settings saved. Agent will pick them up within 10s.' });
     } catch (err: any) {
@@ -108,6 +127,35 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
       )}
 
       <div className="space-y-4">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-6 backdrop-blur-xl shadow-sm">
+          <h2 className="text-sm font-bold text-text-primary mb-4 uppercase tracking-wider flex items-center gap-2"><Server className="w-4 h-4" /> VPS Bilgileri</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase">VPS Adı</label>
+              <input type="text" value={vpsName} onChange={e => setVpsName(e.target.value)} maxLength={100} className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm focus:outline-none focus:border-brand" />
+            </div>
+            <div className="border-t border-border-subtle pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-text-primary flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-status-warning" /> Bakım Modu
+                  </div>
+                  <div className="text-xs text-text-muted">VPS'i bakım moduna al veya bakım modundan çıkar</div>
+                </div>
+                <button
+                  onClick={() => setIsMaintenance(!isMaintenance)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${isMaintenance ? 'bg-status-warning/20 border-status-warning/40 text-status-warning hover:bg-status-warning/30' : 'bg-neutral-bg3 border-border-subtle text-text-secondary hover:text-text-primary hover:bg-neutral-bg4'}`}
+                >
+                  {isMaintenance ? 'Bakımda ✓' : 'Bakımda Değil'}
+                </button>
+              </div>
+              {isMaintenance && (
+                <p className="text-xs text-status-warning mt-2">VPS bakım modunda. Heartbeat alertleri bu VPS için tetiklenmeyecektir.</p>
+              )}
+            </div>
+          </div>
+        </motion.div>
+
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-6 backdrop-blur-xl shadow-sm">
           <h2 className="text-sm font-bold text-text-primary mb-4 uppercase tracking-wider">Agent Intervals</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -148,7 +196,7 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-neutral-bg2/80 border border-border-DEFAULT rounded-2xl p-6 backdrop-blur-xl shadow-sm">
           <h2 className="text-sm font-bold text-text-primary mb-1 uppercase tracking-wider flex items-center gap-2"><MessageCircle className="w-4 h-4" /> Alerts & Telegram</h2>
-          <p className="text-xs text-text-muted mb-4">Custom message template for alerts on this VPS. Variables: <code className="text-brand-light">{'{{vpsName}}'}, {'{{ip}}'}, {'{{metric}}'}, {'{{value}}'}, {'{{threshold}}'}, {'{{duration}}'}, {'{{offlineMinutes}}'}</code></p>
+          <p className="text-xs text-text-muted mb-4">Telegram bildirimlerini bu VPS için açıp kapatın.</p>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -158,18 +206,6 @@ export default function VpsSettingsPage({ params }: { params: Promise<{ id: stri
               <button onClick={() => setSettings({ ...settings, telegramEnabled: !settings.telegramEnabled })} className={`w-10 h-5 rounded-full transition-colors ${settings.telegramEnabled ? 'bg-brand' : 'bg-neutral-bg3'}`}>
                 <span className={`block w-4 h-4 bg-white rounded-full transition-transform ${settings.telegramEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
               </button>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-text-muted mb-1.5 uppercase">Custom Alert Message</label>
-              <textarea
-                value={settings.customAlertMessage}
-                onChange={e => setSettings({ ...settings, customAlertMessage: e.target.value })}
-                maxLength={500}
-                placeholder="🚨 {{vpsName}} — {{metric}} at {{value}}% (threshold {{threshold}}%)"
-                rows={3}
-                className="w-full p-2.5 rounded-xl bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm font-mono focus:outline-none focus:border-brand resize-none"
-              />
-              <div className="text-[10px] text-text-muted mt-1 text-right">{settings.customAlertMessage.length} / 500</div>
             </div>
           </div>
         </motion.div>

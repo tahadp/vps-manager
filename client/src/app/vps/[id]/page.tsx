@@ -7,7 +7,7 @@ import {
   FolderOpen, MonitorPlay, ArrowLeft, RefreshCw, PowerOff, Play,
   AlertCircle, LineChart as LineChartIcon, Activity, Wifi, WifiOff,
   Clock, Shield, Image as ImageIcon, ArrowUpDown, Plus, Trash2,
-  Edit3, Bell, History, Zap, ChevronDown, Save, Network, Eye, MoreVertical,
+  Bell, History, Zap, ChevronDown, Network, MoreVertical,
   LayoutDashboard, Settings as SettingsIcon, X
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -141,7 +141,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
 
   const [vps, setVps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabKey>("overview");
+  const [activeTab, setActiveTab] = useState<TabKey>("terminal");
   const [telemetry, setTelemetry] = useState<any>({});
   const [chartData, setChartData] = useState<any[]>([]);
   const [chartRangeMin, setChartRangeMin] = useState(60);
@@ -165,8 +165,6 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   const [vpsHasExplicitCharts, setVpsHasExplicitCharts] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [editModal, setEditModal] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', ipAddress: '', os: '', status: '' });
   const [menuOpen, setMenuOpen] = useState(false);
   const [cmdResult, setCmdResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [ipLogs, setIpLogs] = useState<any[]>([]);
@@ -350,15 +348,6 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     setTimeout(() => setCmdResult(null), 4000);
   };
 
-  const handleEditVps = async () => {
-    const updated = await api<any>(`/api/vps/${id}`, {
-      method: 'PUT',
-      json: editForm
-    });
-    setVps({ ...vps, ...updated });
-    setEditModal(false);
-  };
-
   const handleDeleteVps = async () => {
     const ok = await showConfirm("Permanently delete this VPS? This cannot be undone.");
     if (!ok) return;
@@ -409,36 +398,6 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
 
-      {editModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setEditModal(false)}>
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-neutral-bg2 border border-border-DEFAULT rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-text-primary mb-4">Edit VPS</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-text-muted mb-1 uppercase">Name</label>
-                <input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full p-2 rounded-lg bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm focus:outline-none focus:border-brand" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-muted mb-1 uppercase">IP Address</label>
-                <input type="text" value={editForm.ipAddress} onChange={e => setEditForm({...editForm, ipAddress: e.target.value})} className="w-full p-2 rounded-lg bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm focus:outline-none focus:border-brand" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-muted mb-1 uppercase">Status</label>
-                <select value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})} className="w-full p-2 rounded-lg bg-neutral-bg1 border border-border-DEFAULT text-text-primary text-sm focus:outline-none focus:border-brand">
-                  <option value="ONLINE">ONLINE</option>
-                  <option value="OFFLINE">OFFLINE</option>
-                  <option value="MAINTENANCE">MAINTENANCE</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end mt-6">
-              <button onClick={() => setEditModal(false)} className="px-4 py-2 text-sm bg-neutral-bg3 hover:bg-neutral-bg4 text-text-primary rounded-xl border border-border-subtle transition-colors">Cancel</button>
-              <button onClick={handleEditVps} className="px-4 py-2 text-sm bg-brand hover:bg-brand-hover text-white rounded-xl transition-colors">Save</button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-
       {cmdResult && (
         <div className={`fixed top-20 right-4 z-50 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border max-w-sm backdrop-blur-md animate-fade-in ${cmdResult.type === 'success' ? 'bg-status-success/15 border-status-success/30 text-status-success' : 'bg-status-error/15 border-status-error/30 text-status-error'}`}>
           <span>{cmdResult.message}</span>
@@ -470,11 +429,6 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
         </div>
         <div className="flex items-center gap-2">
           <RefreshButton vpsId={id} disabled={isOffline} onResult={(ok, msg) => setCmdResult({ type: ok ? 'success' : 'error', message: msg })} />
-          {isAdmin && (
-            <button onClick={() => { setEditForm({ name: vps.name, ipAddress: vps.ipAddress || '', os: vps.os, status: vps.status }); setEditModal(true); }} className="flex items-center gap-1.5 px-3 py-2 text-xs bg-neutral-bg2 hover:bg-neutral-bg3 text-text-secondary rounded-xl border border-border-DEFAULT transition-colors">
-              <Edit3 className="w-3.5 h-3.5" /> Edit
-            </button>
-          )}
           {isAdmin && (
             <button onClick={handleDeleteVps} className="flex items-center gap-1.5 px-3 py-2 text-xs bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-xl border border-status-error/20 transition-colors">
               <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -647,7 +601,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                         No IP address changes logged yet.
                       </div>
                     ) : (
-                      ipLogs.map((log: any) => {
+                      ipLogs.slice(0, 5).map((log: any) => {
                         const parts = log.target.split(' - ');
                         const desc = parts[1] || log.target;
                         const cleanDesc = desc.replace("IP address changed ", "");
@@ -670,16 +624,18 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
             </div>
           )}
 
-          {activeTab === 'terminal' && (
-            isOffline ? (
-              <div className="p-12 flex flex-col items-center justify-center text-text-muted">
-                <WifiOff className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-sm font-medium">VPS is offline</p>
-                <p className="text-xs mt-1">Terminal is unavailable while the VPS is not running.</p>
-              </div>
-            ) : (
-              <div className="p-4 h-[min(750px,70vh)]"><WebPTY vpsId={id} /></div>
-            )
+          {/* Terminal - always mounted when online to keep session alive */}
+          {!isOffline && (
+            <div style={{ display: activeTab === 'terminal' ? 'block' : 'none' }} className="p-4 h-[min(750px,70vh)]">
+              <WebPTY vpsId={id} />
+            </div>
+          )}
+          {activeTab === 'terminal' && isOffline && (
+            <div className="p-12 flex flex-col items-center justify-center text-text-muted">
+              <WifiOff className="w-12 h-12 mb-3 opacity-20" />
+              <p className="text-sm font-medium">VPS is offline</p>
+              <p className="text-xs mt-1">Terminal is unavailable while the VPS is not running.</p>
+            </div>
           )}
 
           {activeTab === 'files' && (
@@ -690,7 +646,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                 <p className="text-xs mt-1">File Manager is unavailable while the VPS is not running.</p>
               </div>
             ) : (
-              <div className="h-[min(750px,70vh)]"><FileManager vpsId={id} /></div>
+              <div className="h-[min(750px,70vh)] overflow-hidden"><FileManager vpsId={id} /></div>
             )
           )}
 

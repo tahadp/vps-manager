@@ -44,7 +44,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default function FileManager({ vpsId, className }: FileManagerProps) {
-  const [currentPath, setCurrentPath] = useState('/');
+  const [currentPath, setCurrentPath] = useState('/root');
   const [files, setFiles] = useState<any[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState('');
@@ -232,10 +232,10 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
   };
 
   return (
-    <div className={className || 'flex h-full'}>
+    <div className={`${className || 'flex h-full'} overflow-hidden`}>
       <input ref={uploadRef} type="file" className="hidden" onChange={uploadFile} />
 
-      <div className="w-1/3 border-r border-border-DEFAULT p-2 flex flex-col bg-neutral-bg1/50">
+      <div className="w-1/3 border-r border-border-DEFAULT p-2 flex flex-col bg-neutral-bg1/50 min-h-0 overflow-hidden">
         <div className="px-3 py-2 text-xs font-mono text-text-secondary bg-neutral-bg2 rounded-lg border border-border-subtle mb-2 flex items-center gap-2">
           <span className="truncate flex-1">{currentPath}</span>
           <button onClick={navigateUp} className="text-text-muted hover:text-text-primary shrink-0" title="Go up">
@@ -290,7 +290,7 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto space-y-1 pr-1">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-1 pr-1">
           {currentPath !== '/' && !createModal && (
             <div
               className="flex items-center gap-2 p-2 hover:bg-neutral-bg3 rounded-lg cursor-pointer text-sm text-text-primary transition-colors"
@@ -396,7 +396,7 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
         </div>
       )}
 
-      <div className="w-2/3 flex flex-col">
+      <div className="w-2/3 flex flex-col min-h-0 overflow-hidden">
         {selectedFile ? (
           <>
             <div className="px-4 py-2 border-b border-border-DEFAULT flex justify-between items-center bg-neutral-bg2/50">
@@ -419,7 +419,7 @@ export default function FileManager({ vpsId, className }: FileManagerProps) {
                 </button>
               </div>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-h-0">
               {loadingContent ? (
                 <div className="flex items-center justify-center h-full text-text-muted">
                   <Loader2 className="w-6 h-6 animate-spin mr-2" />

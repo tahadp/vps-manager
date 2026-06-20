@@ -18,7 +18,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
 
   const [formData, setFormData] = useState({
     name: '',
-    os: 'Windows Server 2022',
+    os: 'Windows 11',
     customOsName: ''
   });
 
@@ -26,7 +26,7 @@ export function AddVpsModal({ isOpen, onClose, onSuccess }: AddVpsModalProps) {
 
   const handleClose = useCallback(() => {
     setSuccessData(null);
-    setFormData({ name: '', os: 'Windows Server 2022', customOsName: '' });
+    setFormData({ name: '', os: 'Windows 11', customOsName: '' });
     onClose();
   }, [onClose]);
 

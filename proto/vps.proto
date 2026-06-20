@@ -153,6 +153,7 @@ message ShellOpenRequest {
   string session_id = 1;
   string vps_id = 2;
   string shell = 3;
+  string cwd = 4;
 }
 
 message ShellOpenedResponse {

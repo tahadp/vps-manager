@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Server, Terminal } from 'lucide-react';
 
-const PRESET_OS = ['Windows Server 2022', 'Ubuntu 22.04', 'Ubuntu 20.04', 'Debian 12', 'CentOS 9'];
+const PRESET_OS = ['Windows 11', 'Ubuntu 22.04', 'Ubuntu 20.04', 'Debian 12', 'CentOS 9'];
 
 interface OsSelectProps {
   value: string;
@@ -22,7 +22,7 @@ export default function OsSelect({ value, customValue, onChange }: OsSelectProps
       <div className="flex gap-2">
         <button
           type="button"
-          onClick={() => { setMode('preset'); onChange('Windows Server 2022', ''); }}
+          onClick={() => { setMode('preset'); onChange('Windows 11', ''); }}
           className={`px-3 py-1 text-xs rounded-lg border transition-colors ${mode === 'preset' ? 'bg-brand/15 border-brand/40 text-brand-light' : 'bg-neutral-bg2 border-border-subtle text-text-secondary'}`}
         >Preset</button>
         <button

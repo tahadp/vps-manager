@@ -82,7 +82,62 @@ var ipLookupURLs = []string{
 	"https://ifconfig.me/ip",
 }
 
-// getAllInterfaceIPs returns a comma-separated list of all non-loopback
+// isPrivateIPv4 reports whether ip belongs to a non-routable IPv4
+// range the agent must not advertise on heartbeats. It supplements
+// net.IP.IsPrivate() (Go 1.17+) with an explicit CGNAT check, since
+// IsPrivate() does NOT cover 100.64.0.0/10 (Tailscale / WireGuard /
+// carrier-grade NAT). Returns false for IPv6 and for any IP that
+// fails the IPv4 parse — IPv6 handling is the caller's job.
+//
+// Ranges filtered:
+//   - 0.0.0.0/8       (unspecified)
+//   - 10.0.0.0/8      (RFC 1918 private)
+//   - 100.64.0.0/10   (CGNAT, RFC 6598 — Tailscale/WireGuard often land here)
+//   - 127.0.0.0/8     (loopback)
+//   - 169.254.0.0/16  (link-local)
+//   - 172.16.0.0/12   (RFC 1918 private, 172.16.0.0 – 172.31.255.255)
+//   - 192.168.0.0/16  (RFC 1918 private)
+func isPrivateIPv4(ip net.IP) bool {
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	// Unspecified 0.0.0.0/8
+	if v4[0] == 0 {
+		return true
+	}
+	// Loopback 127.0.0.0/8
+	if v4[0] == 127 {
+		return true
+	}
+	// Link-local 169.254.0.0/16
+	if v4[0] == 169 && v4[1] == 254 {
+		return true
+	}
+	// CGNAT 100.64.0.0/10 — net.IP.IsPrivate() does NOT cover this.
+	// 100.64.0.0  = 01100100.01000000...
+	// 100.127.255.255 = 01100100.01111111...
+	// First two bits of the second octet are 10 → mask 0xC0, want 0x40.
+	if v4[0] == 100 && v4[1]&0xC0 == 0x40 {
+		return true
+	}
+	// RFC 1918 private 10.0.0.0/8
+	if v4[0] == 10 {
+		return true
+	}
+	// RFC 1918 private 172.16.0.0/12 — 172.16 through 172.31
+	// 172 = 0xAC. Second octet 0x10 .. 0x1F.
+	if v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31 {
+		return true
+	}
+	// RFC 1918 private 192.168.0.0/16
+	if v4[0] == 192 && v4[1] == 168 {
+		return true
+	}
+	return false
+}
+
+// getAllInterfaceIPs returns a comma-separated list of all PUBLIC
 // IPv4 addresses across all UP network interfaces. Used to populate
 // the agent_ip field on heartbeats so the server can show primary +
 // secondary IPs (AGENTS F4.3 multi-NIC aggregation).
@@ -91,6 +146,12 @@ var ipLookupURLs = []string{
 // for tests). Loopback and down interfaces are skipped. IPv6 link-local
 // (fe80::/10) and IPv6 ULA (fc00::/7) are also skipped — they don't
 // help the server's reachability check.
+//
+// Non-public IPv4 ranges are filtered via isPrivateIPv4:
+// 10/8, 172.16/12, 192.168/16, 100.64/10 (CGNAT/Tailscale),
+// 127/8, 0/8, 169.254/16. This prevents NAT'd hosts from
+// reporting their LAN / VPN / Tailscale IPs as the agent's
+// public-facing address.
 //
 // Returns "" if no eligible interface is found.
 func getAllInterfaceIPs() string {
@@ -130,6 +191,12 @@ func getAllInterfaceIPs() string {
 			if v4 == nil {
 				continue
 			}
+			// Filter private / CGNAT / link-local / loopback /
+			// unspecified so NAT'd hosts don't leak LAN, Tailscale,
+			// or WireGuard addresses as the public IP.
+			if isPrivateIPv4(v4) {
+				continue
+			}
 			ips = append(ips, v4.String())
 		}
 	}
@@ -137,21 +204,26 @@ func getAllInterfaceIPs() string {
 }
 
 // getOutboundIP reports the IPs to send on heartbeats. Order:
-//  1. getAllInterfaceIPs() (multi-NIC aggregation, comma-separated)
-//  2. fetchPublicIP (single public IP via api.ipify.org etc.)
-//  3. getLocalOutboundIP (kernel routing table single IP)
+//  1. fetchPublicIP (api.ipify.org, ifconfig.me) — most reliable
+//     public IP; immune to local interface enumeration quirks on
+//     NAT'd / VPN'd / multi-NIC hosts.
+//  2. getAllInterfaceIPs() (multi-NIC aggregation, comma-separated
+//     of public IPs only). On NAT'd hosts this is usually empty.
+//  3. getLocalOutboundIP (kernel routing table single IP) — last
+//     resort fallback for environments with no outbound network
+//     access (e.g. some restricted containers).
 //
-// Step 1 is preferred so the server can show primary + secondary IPs.
-// Steps 2-3 are kept as fallback for environments where
-// net.Interfaces() returns nothing (e.g. heavily restricted containers).
+// Step 1 is preferred so the server sees the WAN-facing IP
+// regardless of what local interfaces are configured. Step 2 still
+// surfaces secondary public IPs (multi-NIC). Step 3 catches edge
+// cases where both 1 and 2 fail.
 func (p *program) getOutboundIP() string {
 	if p == nil || p.ctx == nil {
 		return p.getLocalOutboundIP()
 	}
-	if multi := getAllInterfaceIPs(); multi != "" {
-		return multi
-	}
-	// Fallback: single public IP lookup
+	// First try: dedicated public IP lookup services. These return
+	// the address the rest of the internet sees, which is what the
+	// server actually wants to display.
 	urls := ipLookupURLs
 	for _, url := range urls {
 		ip := p.fetchPublicIP(url)
@@ -159,6 +231,11 @@ func (p *program) getOutboundIP() string {
 			return ip
 		}
 	}
+	// Second try: enumerate local interfaces and report public IPs.
+	if multi := getAllInterfaceIPs(); multi != "" {
+		return multi
+	}
+	// Last resort: kernel routing table single IP.
 	return p.getLocalOutboundIP()
 }
 
