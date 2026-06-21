@@ -386,6 +386,141 @@ func TestShellSession_Close(t *testing.T) {
 	}
 }
 
+// TestShellSession_TermInheritedByInteractiveBash locks the
+// "Backspace does not erase" fix: the agent's startShell must
+// pre-seed the PTY process's TERM (and a few siblings) so an
+// interactive bash — the production default at handleShellOpen
+// (daemon.go:934) — sees a sane terminfo context.
+//
+// Why: when the agent runs as a kardianos / systemd / launchd
+// service, its own environment typically lacks TERM. Without it,
+// the PTY-attached bash cannot locate the right terminfo entry,
+// and the line discipline mapping for DEL (0x7F, the byte
+// xterm.js sends for Backspace) becomes inconsistent: the
+// previous character fails to erase. Pre-seeding TERM in
+// startShell restores the expected behavior.
+//
+// The test boots the production startShell path (no manual
+// env override) and asks the shell to print its own TERM
+// value via `printf 'TERM=%s\n' "$TERM"`. The assertion is
+// that the printed TERM is "xterm-256color" — the value the
+// fix injects in shell_unix.go:shellEnvBase().
+func TestShellSession_TermInheritedByInteractiveBash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows uses cmd.exe + ConPTY and the env-override
+		// path is wired through shell_windows.go's startShell
+		// which is unchanged in this fix (cmd.exe's line
+		// editor is governed by ConPTY's virtual-terminal
+		// modes, not by TERM). Skipping keeps the fix
+		// strictly Unix-scoped and avoids a false negative
+		// against the Windows ConPTY timing flake window.
+		t.Skip("Unix-only: the TERM injection is on the shell_unix.go path")
+	}
+	sess := startTestShell(t)
+
+	// Give bash time to print its initial prompt (or PS1 if the
+	// user's bashrc sets one) so it does not bleed into the
+	// printf output we assert on.
+	time.Sleep(200 * time.Millisecond)
+
+	// Ask the shell itself for its TERM. This goes through
+	// the same PTY → bash → PTY round trip the production
+	// WebPTY uses, so a successful round trip proves both
+	// the env was injected and bash accepted it.
+	cmd := "printf 'TERM=%s\\n' \"$TERM\"\n"
+	if _, err := sess.Write([]byte(cmd)); err != nil {
+		t.Fatalf("Write TERM probe: %v", err)
+	}
+
+	got := readWithTimeout(t, sess, 4096, 2*time.Second)
+	combined := string(got)
+	want := "TERM=xterm-256color"
+	if !strings.Contains(combined, want) {
+		t.Fatalf("shell did not see TERM=xterm-256color (startShell must inject it)\n--- output ---\n%q\n--- end ---", combined)
+	}
+	// Defensive: the parent agent's TERM (if any) must NOT
+	// have leaked through unfiltered. We strip the injected
+	// value and assert no other TERM=<something> survived.
+	stripped := strings.ReplaceAll(combined, want, "")
+	if strings.Contains(stripped, "TERM=") {
+		t.Fatalf("unexpected second TERM value in shell output — overlay must replace, not append\n--- output ---\n%q\n--- end ---", combined)
+	}
+}
+
+// TestShellSession_Backspace_InteractiveBash locks the
+// end-to-end backspace behavior on the production path: an
+// interactive bash started via startShell must honor the
+// line-discipline erase so "AB\bC\n" round-trips as "AC".
+//
+// This is the regression guard for the user-visible bug
+// (Backspace does not erase in the WebPTY). The earlier
+// TestShellSession_Backspace uses `bash -c cat` which
+// only proves the PTY line discipline works in isolation;
+// it does NOT prove the production startShell configures
+// TERM in a way that makes an interactive bash honor
+// Backspace. This test fills that gap.
+func TestShellSession_Backspace_InteractiveBash(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Same rationale as the TERM test above: the fix is
+		// Unix-only and the Windows ConPTY path is covered
+		// by the manual acceptance script.
+		t.Skip("Unix-only: the WebPTY backspace regression on the production startShell path is a Unix/bash issue")
+	}
+	sess := startTestShell(t)
+	time.Sleep(200 * time.Millisecond)
+
+	// `printf` is a bash builtin so we do not depend on the
+	// shell's PATH / external binaries. The input bytes
+	// mirror what xterm.js sends: 'A', 'B', 0x08 (BS),
+	// 'C', newline. With the line discipline in canonical
+	// mode and TERM set (the fix), bash's stdin sees "AC\n"
+	// and the printf's stdout echoes "AC". Without the
+	// fix, the eraser maps differently and the echoed
+	// output contains the literal "ABC" sequence.
+	if _, err := sess.Write([]byte("printf 'AB\bC\\n'\n")); err != nil {
+		t.Fatalf("Write printf probe: %v", err)
+	}
+
+	got := readWithTimeout(t, sess, 4096, 2*time.Second)
+	combined := string(got)
+
+	// Must contain the erased form. (The 'A' may appear
+	// inside an echo of the command itself, so we check the
+	// substring "AC" is present at least once after the
+	// command's "printf" keyword — i.e. in the printf's
+	// output, not in the echo of the typed command.)
+	// We accept any occurrence of "AC" as proof that the
+	// eraser removed the 'B' from at least one rendered
+	// copy of the input.
+	if !strings.Contains(combined, "AC") {
+		t.Fatalf("interactive bash did not erase 'B' on backspace — TERM env injection regressed?\n--- output ---\n%q\n--- end ---", combined)
+	}
+
+	// Stronger assertion: the printf's output (after the
+	// echoed "printf" command) must NOT contain the literal
+	// "ABC" sequence. Strip ANSI cursor-back sequences first
+	// (the PTY echoes the visual erase as ESC [ D when
+	// TERM is set correctly — which is exactly the behavior
+	// the fix enables).
+	stripped := stripAnsiCSI(combined)
+	// Locate the printf command echo (everything up to and
+	// including the first newline after "printf") and the
+	// printf's output (everything after).
+	if idx := strings.Index(stripped, "printf"); idx >= 0 {
+		afterCmd := stripped[idx:]
+		// Take the substring after the FIRST newline that
+		// follows the "printf" keyword — that is the
+		// command's own output, not the echo.
+		nl := strings.Index(afterCmd, "\n")
+		if nl >= 0 {
+			out := afterCmd[nl+1:]
+			if strings.Contains(out, "ABC") {
+				t.Fatalf("interactive bash printf output contains 'ABC' (CSI-stripped) — line discipline erase is broken on the production startShell path\n--- full output ---\n%q\n--- post-command ---\n%q\n--- end ---", combined, out)
+			}
+		}
+	}
+}
+
 // Compile-time guard: io is used implicitly via test framework
 // imports; keep the reference so a future refactor that drops
 // the import does not silently break the test build.

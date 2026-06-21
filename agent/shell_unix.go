@@ -25,11 +25,16 @@ type shellSession struct {
 	cmd *gopty.Cmd
 }
 
+// shellEnvBase lives in shell_env.go (cross-platform) so the unit
+// tests in shell_env_test.go can exercise it on every supported
+// platform. On the Unix production path we wire it through here so
+// the PTY-attached bash inherits a terminfo-correct TERM (the fix
+// for the WebPTY backspace bug).
 func startShell(shell string) (*shellSession, error) {
 	if Start == nil {
 		return nil, fmt.Errorf("pty: Start factory not initialized (unsupported platform?)")
 	}
-	p, err := Start(Options{Command: shell})
+	p, err := Start(Options{Command: shell, Env: shellEnvBase()})
 	if err != nil {
 		return nil, err
 	}
