@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, ShieldCheck, ArrowRight, Server, TerminalSquare, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, ShieldCheck, ArrowRight, Server, AlertCircle, KeyRound } from 'lucide-react';
 import { api, setStoredUser } from '@/lib/api';
 
 export default function Login() {
@@ -34,7 +34,7 @@ export default function Login() {
 
       const data = await api<{ user?: any; message?: string }>(endpoint, {
         method: 'POST',
-        json: payload
+        json: payload,
       });
 
       if (isRegister) {
@@ -53,102 +53,123 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen bg-neutral-bg1 font-sans relative overflow-hidden">
-      {/* Background glow effects */}
-      <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-brand-subtle blur-[150px] rounded-full pointer-events-none" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-dataviz-blue/10 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-screen flex bg-bg-base">
+      {/* Left pane — visual identity. Uses one accent only.
+          No gradient (the AI-slop tell). */}
+      <div className="hidden lg:flex flex-col w-1/2 p-12 relative overflow-hidden">
+        <div
+          aria-hidden
+          className="absolute -top-32 -left-32 w-[420px] h-[420px] rounded-full opacity-50 blur-3xl pointer-events-none"
+          style={{ background: 'radial-gradient(closest-side, var(--brand-soft), transparent)' }}
+        />
 
-      {/* Left pane: Branding / Graphic */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 p-12 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-dataviz-blue flex items-center justify-center shadow-glow">
-            <Server className="text-white w-5 h-5" />
-          </div>
-          <span className="text-xl font-bold text-text-primary tracking-tight">VPS Manager</span>
+        <div className="relative flex items-center gap-2.5">
+          <span className="h-8 w-8 rounded-md bg-brand inline-flex items-center justify-center">
+            <Server className="w-4 h-4 text-text-inverse" />
+          </span>
+          <span className="text-base font-semibold text-text-primary tracking-tight">
+            VPS Manager
+          </span>
         </div>
 
-        <div className="mb-20">
-          <h1 className="text-5xl font-bold text-text-primary leading-tight mb-6">
-            Command your infrastructure <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-dataviz-blue">with precision.</span>
+        <div className="relative mt-auto mb-auto pt-24 max-w-md">
+          <h1 className="text-4xl font-semibold text-text-primary leading-[1.1] tracking-tight">
+            One console for every server you operate.
           </h1>
-          <p className="text-text-secondary text-lg max-w-md leading-relaxed">
-            A high-performance management console built for speed, security, and effortless control of your virtual private servers.
+          <p className="mt-5 text-text-secondary text-[15px] leading-relaxed">
+            Live metrics, terminals, file access, and rule-based alerts — streamed from
+            each host over a single secure channel.
           </p>
+
+          <ul className="mt-10 space-y-3 text-sm text-text-secondary">
+            <li className="flex items-center gap-3">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+              Real-time CPU, memory, and network telemetry
+            </li>
+            <li className="flex items-center gap-3">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+              In-browser terminal with replay
+            </li>
+            <li className="flex items-center gap-3">
+              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+              Rule-based alerts with recovery notifications
+            </li>
+          </ul>
         </div>
 
-        <div className="flex items-center gap-4 text-sm text-text-muted">
-          <TerminalSquare className="w-4 h-4" />
-          <span>System v2.0.4 — Secure connection established</span>
-        </div>
+        <p className="relative text-xs text-text-muted">
+          v2.0 · Multi-tenant · End-to-end gRPC
+        </p>
       </div>
 
-      {/* Right pane: Auth Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 relative z-10">
-        <div className="w-full max-w-[440px]">
-          {/* Mobile logo */}
-          <div className="flex lg:hidden items-center gap-3 mb-10 justify-center">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-dataviz-blue flex items-center justify-center shadow-glow">
-              <Server className="text-white w-5 h-5" />
-            </div>
-            <span className="text-2xl font-bold text-text-primary tracking-tight">VPS Manager</span>
+      {/* Right pane — auth form */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10">
+        <div className="w-full max-w-[400px]">
+          <div className="lg:hidden flex items-center gap-2.5 mb-10 justify-center">
+            <span className="h-9 w-9 rounded-md bg-brand inline-flex items-center justify-center">
+              <Server className="w-5 h-5 text-text-inverse" />
+            </span>
+            <span className="text-lg font-semibold text-text-primary tracking-tight">
+              VPS Manager
+            </span>
           </div>
 
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="bg-neutral-bg2/80 backdrop-blur-xl border border-border-subtle rounded-3xl p-8 shadow-2xl"
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+            className="bg-bg-raised border border-border rounded-xl p-7 shadow-soft"
           >
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-text-primary mb-2">
-                {isRegister ? 'Create an account' : 'Welcome back'}
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-text-primary tracking-tight">
+                {isRegister ? 'Create an account' : 'Sign in'}
               </h2>
-              <p className="text-text-secondary text-sm">
+              <p className="text-text-secondary text-sm mt-1">
                 {isRegister
-                  ? 'Enter your details to request access to the platform.'
-                  : 'Enter your credentials to access your dashboard.'}
+                  ? 'Request access to your team’s console.'
+                  : 'Enter your credentials to continue.'}
               </p>
             </div>
 
             <AnimatePresence mode="wait">
               {error && (
                 <motion.div
+                  key="err"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   role="alert"
-                  className="mb-6 p-4 bg-status-error/10 border border-status-error/20 rounded-xl flex items-start gap-3"
+                  className="mb-5 px-3.5 py-2.5 bg-status-error/10 border border-status-error/30 rounded-md flex items-start gap-2.5 text-sm text-status-error"
                 >
-                  <AlertCircle className="w-5 h-5 text-status-error shrink-0 mt-0.5" />
-                  <span className="text-sm text-status-error">{error}</span>
+                  <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{error}</span>
                 </motion.div>
               )}
               {msg && (
                 <motion.div
+                  key="msg"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   role="status"
                   aria-live="polite"
-                  className="mb-6 p-4 bg-status-success/10 border border-status-success/20 rounded-xl flex items-start gap-3"
+                  className="mb-5 px-3.5 py-2.5 bg-status-success/10 border border-status-success/30 rounded-md flex items-start gap-2.5 text-sm text-status-success"
                 >
-                  <ShieldCheck className="w-5 h-5 text-status-success shrink-0 mt-0.5" />
-                  <span className="text-sm text-status-success">{msg}</span>
+                  <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
+                  <span>{msg}</span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               {!isRegister ? (
-                // Login Fields
                 <>
-                  <div className="space-y-1.5">
-                    <label htmlFor="identifier" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email or Username</label>
+                  <div>
+                    <label htmlFor="identifier" className="block text-sm font-medium text-text-primary mb-1.5">
+                      Email or username
+                    </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <User className="w-4 h-4 text-text-muted" />
-                      </div>
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                       <input
                         id="identifier"
                         type="text"
@@ -156,18 +177,19 @@ export default function Login() {
                         onChange={(e) => setIdentifier(e.target.value)}
                         required
                         disabled={submitting}
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
-                        placeholder="admin or name@company.com"
+                        autoComplete="username"
+                        className="w-full h-10 pl-9 pr-3 bg-bg-sunken border border-border rounded-md text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-brand transition-colors disabled:opacity-50"
+                        placeholder="you@company.com"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label htmlFor="password" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
+                  <div>
+                    <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-1.5">
+                      Password
+                    </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Lock className="w-4 h-4 text-text-muted" />
-                      </div>
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                       <input
                         id="password"
                         type="password"
@@ -175,35 +197,32 @@ export default function Login() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={submitting}
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
+                        autoComplete="current-password"
+                        className="w-full h-10 pl-9 pr-3 bg-bg-sunken border border-border rounded-md text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-brand transition-colors disabled:opacity-50"
                         placeholder="••••••••"
                       />
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 pt-1">
+                  <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
                     <input
                       type="checkbox"
-                      id="remember"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
                       disabled={submitting}
-                      className="w-4 h-4 rounded border-border-DEFAULT bg-neutral-bg1 text-brand focus:ring-brand focus:ring-offset-neutral-bg2 transition-colors cursor-pointer"
+                      className="h-4 w-4 rounded border-border bg-bg-sunken text-brand focus:ring-2 focus:ring-brand focus:ring-offset-1 focus:ring-offset-bg-raised cursor-pointer accent-[var(--brand)]"
                     />
-                    <label htmlFor="remember" className="text-sm text-text-secondary cursor-pointer select-none">
-                      Remember me for 30 days
-                    </label>
-                  </div>
+                    <span className="text-sm text-text-secondary">Remember me for 30 days</span>
+                  </label>
                 </>
               ) : (
-                // Register Fields
                 <>
-                  <div className="space-y-1.5">
-                    <label htmlFor="username" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Username</label>
+                  <div>
+                    <label htmlFor="username" className="block text-sm font-medium text-text-primary mb-1.5">
+                      Username
+                    </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <User className="w-4 h-4 text-text-muted" />
-                      </div>
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                       <input
                         id="username"
                         type="text"
@@ -211,18 +230,19 @@ export default function Login() {
                         onChange={(e) => setUsername(e.target.value)}
                         required
                         disabled={submitting}
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
-                        placeholder="johndoe"
+                        autoComplete="username"
+                        className="w-full h-10 pl-9 pr-3 bg-bg-sunken border border-border rounded-md text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-brand transition-colors disabled:opacity-50"
+                        placeholder="your-handle"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label htmlFor="reg-email" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Email Address</label>
+                  <div>
+                    <label htmlFor="reg-email" className="block text-sm font-medium text-text-primary mb-1.5">
+                      Email
+                    </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Mail className="w-4 h-4 text-text-muted" />
-                      </div>
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                       <input
                         id="reg-email"
                         type="email"
@@ -230,18 +250,19 @@ export default function Login() {
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={submitting}
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
-                        placeholder="name@company.com"
+                        autoComplete="email"
+                        className="w-full h-10 pl-9 pr-3 bg-bg-sunken border border-border rounded-md text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-brand transition-colors disabled:opacity-50"
+                        placeholder="you@company.com"
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label htmlFor="reg-password" className="text-xs font-semibold text-text-muted uppercase tracking-wider">Password</label>
+                  <div>
+                    <label htmlFor="reg-password" className="block text-sm font-medium text-text-primary mb-1.5">
+                      Password
+                    </label>
                     <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Lock className="w-4 h-4 text-text-muted" />
-                      </div>
+                      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
                       <input
                         id="reg-password"
                         type="password"
@@ -249,8 +270,9 @@ export default function Login() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={submitting}
-                        className="w-full pl-10 p-3 bg-neutral-bg1 border border-border-DEFAULT rounded-xl text-text-primary placeholder:text-text-muted/50 focus:outline-none focus:border-brand focus:ring-1 focus:ring-brand transition-all disabled:opacity-50"
-                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        className="w-full h-10 pl-9 pr-3 bg-bg-sunken border border-border rounded-md text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-brand transition-colors disabled:opacity-50"
+                        placeholder="At least 8 characters"
                       />
                     </div>
                   </div>
@@ -260,28 +282,26 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full group flex items-center justify-center gap-2 p-3 mt-4 bg-brand hover:bg-brand-hover text-white font-medium rounded-xl transition-all active:scale-[0.98] shadow-glow disabled:opacity-60 disabled:cursor-not-allowed"
+                className="group w-full h-10 mt-2 inline-flex items-center justify-center gap-2 bg-brand hover:bg-brand-hover text-text-inverse text-sm font-medium rounded-md transition-colors active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {submitting ? 'Please wait…' : (isRegister ? 'Create Account' : 'Sign In')}
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                {submitting ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </button>
             </form>
 
-            <div className="mt-8 pt-6 border-t border-border-subtle text-center">
-              <p className="text-sm text-text-secondary">
-                {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRegister(!isRegister);
-                    setError('');
-                    setMsg('');
-                  }}
-                  className="text-brand hover:text-brand-light font-medium transition-colors"
-                >
-                  {isRegister ? 'Sign In' : 'Sign up'}
-                </button>
-              </p>
+            <div className="mt-6 pt-5 border-t border-border-subtle text-center text-sm text-text-secondary">
+              {isRegister ? 'Already have an account? ' : 'No account? '}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setError('');
+                  setMsg('');
+                }}
+                className="text-brand hover:text-brand-hover font-medium transition-colors"
+              >
+                {isRegister ? 'Sign in' : 'Request access'}
+              </button>
             </div>
           </motion.div>
         </div>

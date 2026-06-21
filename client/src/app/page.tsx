@@ -29,46 +29,48 @@ function SortableVpsCard(props: any) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={`group relative bg-neutral-bg2/80 backdrop-blur-xl border ${isSelected ? 'border-brand shadow-glow' : 'border-border-DEFAULT hover:border-brand/50'} rounded-2xl overflow-hidden transition-all duration-300 flex flex-col`}>
-      <div {...attributes} {...listeners} className="absolute top-4 left-4 z-20 cursor-grab active:cursor-grabbing p-1 bg-neutral-bg3 rounded text-text-muted hover:text-text-primary">
-        <GripHorizontal className="w-4 h-4" />
+    <div ref={setNodeRef} style={style} className={`group relative bg-bg-raised border ${isSelected ? 'border-brand shadow-glow' : 'border-border hover:border-border-strong'} rounded-lg overflow-hidden transition-colors duration-150 flex flex-col`}>
+      <div {...attributes} {...listeners} className="absolute top-3 left-3 z-20 cursor-grab active:cursor-grabbing p-1 bg-bg-elevated rounded text-text-muted hover:text-text-primary">
+        <GripHorizontal className="w-3.5 h-3.5" />
       </div>
 
-      <div className="absolute top-4 right-4 z-20">
+      <div className="absolute top-3 right-3 z-20">
         <input
           type="checkbox"
           checked={isSelected}
           onChange={() => toggleSelect(vps.id)}
-          className="w-4 h-4 rounded border-border-strong bg-neutral-bg1 text-brand focus:ring-brand focus:ring-offset-neutral-bg2 cursor-pointer transition-colors"
+          className="h-4 w-4 rounded border-border bg-bg-sunken text-brand focus:ring-2 focus:ring-brand focus:ring-offset-1 focus:ring-offset-bg-raised cursor-pointer accent-[var(--brand)]"
         />
       </div>
 
-      <div className="p-5 pb-4 relative z-10 cursor-pointer pt-12" onClick={() => router.push(`/vps/${vps.id}`)}>
+      <div className="p-4 pb-3 relative z-10 cursor-pointer pt-11" onClick={() => router.push(`/vps/${vps.id}`)}>
         <div className="flex items-start gap-3 mb-1">
-          <div className="w-10 h-10 rounded-xl bg-neutral-bg1 border border-border-subtle flex items-center justify-center shrink-0">
-            <Server className="w-5 h-5 text-dataviz-blue" />
+          <div className="h-9 w-9 rounded-md bg-bg-sunken border border-border-subtle flex items-center justify-center shrink-0">
+            <Server className="w-4 h-4 text-dataviz-blue" />
           </div>
-          <div>
-            <h3 className="text-base font-bold text-text-primary flex items-center gap-2">
-              {vps.name}
-              <span className="relative flex h-2 w-2">
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2 truncate">
+              <span className="truncate">{vps.name}</span>
+              <span className="relative flex h-2 w-2 shrink-0">
                 {vps.status === 'ONLINE' ? (
                   <>
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-status-success"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-status-success" />
                   </>
                 ) : vps.status === 'MAINTENANCE' ? (
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-status-warning"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-status-warning" />
                 ) : (
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-status-error"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-status-error" />
                 )}
               </span>
             </h3>
-            <p className="text-xs text-text-muted mt-0.5 font-mono">{vps.ipAddress}</p>
+            <p className="text-xs text-text-muted mt-0.5 font-mono tabular-nums truncate">
+              {vps.ipAddress}
+            </p>
           </div>
         </div>
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-neutral-bg4 text-text-secondary border border-border-subtle">
+        <div className="mt-2.5 flex items-center gap-1.5">
+          <span className="text-[11px] font-medium px-2 py-0.5 rounded-sm bg-bg-elevated text-text-secondary border border-border-subtle">
             {vps.os === 'OTHER' && vps.customOsName ? vps.customOsName : vps.os}
           </span>
         </div>
@@ -76,32 +78,31 @@ function SortableVpsCard(props: any) {
 
       <div
         ref={screenshotRef}
-        className="w-full h-36 bg-black/50 border-y border-border-subtle overflow-hidden flex items-center justify-center relative cursor-pointer group-hover:border-border-DEFAULT transition-colors"
+        className="w-full h-32 bg-bg-sunken border-y border-border-subtle overflow-hidden flex items-center justify-center relative cursor-pointer group-hover:border-border transition-colors"
         onClick={() => router.push(`/vps/${vps.id}`)}
       >
         {screenshots[vps.id] && inView ? (
           <img
             src={`data:image/jpeg;base64,${screenshots[vps.id]}`}
-            alt="Screenshot"
-            className="w-full h-full object-cover opacity-70 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+            alt={`${vps.name} screen`}
+            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-[1.02] transition-all duration-500"
             loading="lazy"
           />
         ) : (
-          <div className="flex flex-col items-center text-text-muted/50 gap-2">
+          <div className="flex flex-col items-center text-text-muted/60 gap-1.5">
             {screenshots[vps.id] ? (
-              <div className="w-full h-full bg-neutral-bg3 animate-pulse" />
+              <div className="w-full h-full bg-bg-elevated animate-pulse" />
             ) : (
               <>
-                <Eye className="w-6 h-6" />
+                <Eye className="w-5 h-5" />
                 <span className="text-xs">No display signal</span>
               </>
             )}
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20 pointer-events-none" />
-        <div className="absolute bottom-2 left-3 right-3 flex justify-between text-[10px] font-mono text-white/80">
+        <div className="absolute bottom-1.5 left-2.5 right-2.5 flex justify-between text-[10px] font-mono text-text-muted tabular-nums">
           <span className="flex items-center gap-1">
-            <Activity className="w-3 h-3 text-dataviz-green" />
+            <Activity className="w-3 h-3 text-status-success" />
             UL {(m.NetTx / 1024).toFixed(2)}K
           </span>
           <span className="flex items-center gap-1">
@@ -111,17 +112,17 @@ function SortableVpsCard(props: any) {
         </div>
       </div>
 
-      <div className="p-4 grid grid-cols-2 gap-4 flex-1">
+      <div className="p-3 grid grid-cols-2 gap-3 flex-1">
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
             <span className="text-text-muted flex items-center gap-1">
               <Cpu className="w-3.5 h-3.5" /> CPU
             </span>
-            <span className="text-text-primary font-medium">{(m.CPUUsage ?? 0).toFixed(2)}%</span>
+            <span className="text-text-primary font-medium tabular-nums">{(m.CPUUsage ?? 0).toFixed(2)}%</span>
           </div>
-          <div className="w-full bg-neutral-bg4 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-bg-elevated rounded-full h-1.5 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${m.CPUUsage > 85 ? 'bg-status-error shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-brand'}`}
+              className={`h-full rounded-full transition-all duration-500 ${m.CPUUsage > 85 ? 'bg-status-error' : 'bg-brand'}`}
               style={{ width: `${Math.min(m.CPUUsage || 0, 100)}%` }}
             />
           </div>
@@ -131,41 +132,44 @@ function SortableVpsCard(props: any) {
             <span className="text-text-muted flex items-center gap-1">
               <MemoryStick className="w-3.5 h-3.5" /> RAM
             </span>
-            <span className="text-text-primary font-medium">{(m.RAMUsage ?? 0).toFixed(2)}%</span>
+            <span className="text-text-primary font-medium tabular-nums">{(m.RAMUsage ?? 0).toFixed(2)}%</span>
           </div>
-          <div className="w-full bg-neutral-bg4 rounded-full h-1.5 overflow-hidden">
+          <div className="w-full bg-bg-elevated rounded-full h-1.5 overflow-hidden">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${m.RAMUsage > 85 ? 'bg-status-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-dataviz-purple'}`}
+              className={`h-full rounded-full transition-all duration-500 ${m.RAMUsage > 85 ? 'bg-status-warning' : 'bg-dataviz-purple'}`}
               style={{ width: `${Math.min(m.RAMUsage || 0, 100)}%` }}
             />
           </div>
         </div>
       </div>
 
-      <div className="p-3 border-t border-border-subtle bg-neutral-bg1/50 flex gap-2 justify-end">
-        <RefreshButton vpsId={vps.id} disabled={vps.status !== 'ONLINE'} className="p-2 bg-status-info/10 hover:bg-status-info/20 text-status-info rounded-lg transition-colors border border-status-info/20 disabled:opacity-40 disabled:cursor-not-allowed" />
+      <div className="p-2 border-t border-border-subtle bg-bg-elevated/30 flex gap-1.5 justify-end">
+        <RefreshButton vpsId={vps.id} disabled={vps.status !== 'ONLINE'} className="h-8 w-8 inline-flex items-center justify-center bg-status-info/10 hover:bg-status-info/20 text-status-info rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed" />
         <button
           onClick={() => executeCommand(vps.id, 'restart')}
           disabled={vps.status !== 'ONLINE'}
-          className="p-2 bg-neutral-bg3 hover:bg-neutral-bg4 text-text-secondary hover:text-text-primary rounded-lg transition-colors border border-border-subtle disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-neutral-bg3"
-          title="Restart Server"
+          className="h-8 w-8 inline-flex items-center justify-center bg-bg-elevated hover:bg-bg-overlay text-text-secondary hover:text-text-primary rounded-md transition-colors border border-border-subtle disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Restart server"
+          aria-label="Restart server"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={() => executeCommand(vps.id, 'stop')}
           disabled={vps.status !== 'ONLINE'}
-          className="p-2 bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-lg transition-colors border border-status-error/20 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-status-error/10"
-          title="Power Off"
+          className="h-8 w-8 inline-flex items-center justify-center bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Power off"
+          aria-label="Power off"
         >
-          <PowerOff className="w-4 h-4" />
+          <PowerOff className="w-3.5 h-3.5" />
         </button>
         <button
           onClick={() => router.push(`/vps/${vps.id}`)}
-          className="p-2 bg-brand/10 hover:bg-brand/20 text-brand-light rounded-lg transition-colors border border-brand/20 ml-1"
-          title="Open Detail"
+          className="h-8 w-8 inline-flex items-center justify-center bg-brand-soft hover:bg-brand text-brand hover:text-text-inverse rounded-md transition-colors"
+          title="Open detail"
+          aria-label="Open detail"
         >
-          <Eye className="w-4 h-4" />
+          <Eye className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -356,8 +360,8 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-text-muted">
-        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin mb-4" />
-        Initializing Dashboard...
+        <div className="h-6 w-6 border-2 border-brand border-t-transparent rounded-full animate-spin mb-3" />
+        Initializing dashboard…
       </div>
     );
   }
@@ -373,30 +377,30 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-[1600px] mx-auto pb-12">
-      <header className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <header className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-text-primary mb-2 flex items-center gap-3">
-            <Activity className="w-8 h-8 text-brand" />
-            Infrastructure Overview
+          <h1 className="text-2xl font-semibold tracking-tight text-text-primary mb-1 flex items-center gap-2.5">
+            <Activity className="w-5 h-5 text-brand" />
+            Infrastructure
           </h1>
           <p className="text-text-secondary text-sm">
-            Monitor and manage your active virtual private servers in real-time.
+            Live status for every host in your account.
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-text-muted">
+            <span className={`h-1.5 w-1.5 rounded-full ${
               connectionStatus === 'connected' ? 'bg-status-success' :
               connectionStatus === 'reconnecting' ? 'bg-status-warning animate-pulse' :
               'bg-status-error'
             }`} />
-            <span className="text-xs text-text-muted capitalize">{connectionStatus}</span>
+            <span className="capitalize">{connectionStatus}</span>
           </div>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 bg-brand hover:bg-brand-hover text-white px-4 py-2 rounded-xl transition-all shadow-glow text-sm font-medium"
+            className="inline-flex items-center gap-2 bg-brand hover:bg-brand-hover text-text-inverse h-9 px-3.5 rounded-md text-sm font-medium transition-colors"
           >
             <Server className="w-4 h-4" />
             Add VPS
@@ -407,36 +411,63 @@ export default function Dashboard() {
       <AnimatePresence>
         {selectedVps.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mb-4 flex items-center gap-2 bg-brand-subtle px-4 py-2 rounded-xl border border-brand/30"
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-4 flex items-center gap-2 bg-brand-soft px-3 h-10 rounded-md border border-brand/30"
           >
-            <span className="text-xs font-semibold text-brand-light">{selectedVps.length} selected</span>
-            <button onClick={() => setConfirmBulk({ action: 'restart', message: `Restart ${selectedVps.length} VPS?` })} className="flex items-center gap-1.5 text-xs bg-neutral-bg2 hover:bg-neutral-bg3 text-text-primary px-3 py-1.5 rounded-lg border border-border-subtle">
+            <span className="text-xs font-medium text-text-primary">
+              {selectedVps.length} selected
+            </span>
+            <button
+              onClick={() => setConfirmBulk({ action: 'restart', message: `Restart ${selectedVps.length} VPS?` })}
+              className="inline-flex items-center gap-1.5 text-xs bg-bg-raised hover:bg-bg-elevated text-text-primary px-2.5 h-7 rounded-md border border-border-subtle"
+            >
               <RefreshCw className="w-3 h-3" /> Restart
             </button>
-            <button onClick={() => setConfirmBulk({ action: 'stop', message: `Stop ${selectedVps.length} VPS?` })} className="flex items-center gap-1.5 text-xs bg-status-error/20 hover:bg-status-error/30 text-status-error px-3 py-1.5 rounded-lg border border-status-error/30">
+            <button
+              onClick={() => setConfirmBulk({ action: 'stop', message: `Stop ${selectedVps.length} VPS?` })}
+              className="inline-flex items-center gap-1.5 text-xs bg-status-error/10 hover:bg-status-error/20 text-status-error px-2.5 h-7 rounded-md border border-status-error/30"
+            >
               <PowerOff className="w-3 h-3" /> Stop
             </button>
-            <button onClick={() => setConfirmBulk({ action: 'refresh', message: `Refresh ${selectedVps.length} VPS?` })} className="flex items-center gap-1.5 text-xs bg-status-info/15 hover:bg-status-info/25 text-status-info px-3 py-1.5 rounded-lg border border-status-info/30">
-              <RefreshCcw className="w-3 h-3" /> Refresh All
+            <button
+              onClick={() => setConfirmBulk({ action: 'refresh', message: `Refresh ${selectedVps.length} VPS?` })}
+              className="inline-flex items-center gap-1.5 text-xs bg-status-info/10 hover:bg-status-info/20 text-status-info px-2.5 h-7 rounded-md border border-status-info/30"
+            >
+              <RefreshCcw className="w-3 h-3" /> Refresh
             </button>
             {user?.role === 'ADMIN' && (
-              <button onClick={() => setConfirmBulk({ action: 'delete', message: `Delete ${selectedVps.length} VPS?` })} className="flex items-center gap-1.5 text-xs bg-status-error/20 hover:bg-status-error/30 text-status-error px-3 py-1.5 rounded-lg border border-status-error/30">
+              <button
+                onClick={() => setConfirmBulk({ action: 'delete', message: `Delete ${selectedVps.length} VPS?` })}
+                className="inline-flex items-center gap-1.5 text-xs bg-status-error/10 hover:bg-status-error/20 text-status-error px-2.5 h-7 rounded-md border border-status-error/30"
+              >
                 <AlertCircle className="w-3 h-3" /> Delete
               </button>
             )}
-            <button onClick={() => setSelectedVps([])} className="ml-auto text-xs text-text-muted hover:text-text-primary">Clear</button>
+            <button
+              onClick={() => setSelectedVps([])}
+              className="ml-auto text-xs text-text-muted hover:text-text-primary h-7 px-2"
+            >
+              Clear
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
       {toast && (
-        <div className={`fixed top-20 right-4 z-50 flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-medium shadow-lg border max-w-sm backdrop-blur-md animate-fade-in ${toast.type === 'success' ? 'bg-status-success/15 border-status-success/30 text-status-success' : 'bg-status-error/15 border-status-error/30 text-status-error'}`}>
+        <div className={`fixed top-20 right-4 z-50 flex items-center justify-between gap-3 px-4 h-10 rounded-md text-sm font-medium shadow-raise border max-w-sm animate-fade-in ${
+          toast.type === 'success'
+            ? 'bg-status-success/15 border-status-success/30 text-status-success'
+            : 'bg-status-error/15 border-status-error/30 text-status-error'
+        }`}>
           <span>{toast.message}</span>
-          <button onClick={() => setToast(null)} className="p-0.5 hover:bg-white/10 rounded transition-colors" aria-label="Close notification">
-            <X className="w-4 h-4" />
+          <button
+            onClick={() => setToast(null)}
+            className="p-0.5 hover:bg-bg-elevated rounded transition-colors"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -444,33 +475,43 @@ export default function Dashboard() {
       <Modal
         isOpen={!!confirmBulk}
         onClose={() => setConfirmBulk(null)}
-        title="Confirm"
+        title="Confirm action"
         actions={
           <>
-            <button onClick={() => setConfirmBulk(null)} className="px-4 py-2 text-sm bg-neutral-bg3 text-text-primary rounded-xl">Cancel</button>
-            <button onClick={() => executeBulkCommand(confirmBulk!.action)} className="px-4 py-2 text-sm bg-brand hover:bg-brand-hover text-white rounded-xl">Confirm</button>
+            <button
+              onClick={() => setConfirmBulk(null)}
+              className="h-9 px-3.5 text-sm bg-bg-elevated hover:bg-bg-overlay text-text-primary rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => executeBulkCommand(confirmBulk!.action)}
+              className="h-9 px-3.5 text-sm bg-brand hover:bg-brand-hover text-text-inverse rounded-md transition-colors"
+            >
+              Confirm
+            </button>
           </>
         }
       >
-        <p className="text-text-primary text-sm">{confirmBulk?.message}</p>
+        <p className="text-text-primary">{confirmBulk?.message}</p>
       </Modal>
 
       {vpsList.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-32 text-text-muted border border-dashed border-border-strong rounded-3xl bg-neutral-bg1/50">
-          <Server className="w-16 h-16 mb-4 opacity-50" />
-          <p className="text-lg font-medium text-text-secondary mb-2">No servers found</p>
-          <p className="text-sm">There are no servers assigned to your account.</p>
+        <div className="flex flex-col items-center justify-center py-24 text-text-muted border border-dashed border-border-strong rounded-lg bg-bg-raised/50">
+          <Server className="w-10 h-10 mb-3 opacity-50" />
+          <p className="text-base font-medium text-text-secondary mb-1">No servers yet</p>
+          <p className="text-sm">Add a server to start streaming telemetry.</p>
         </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={vpsList.map(v => v.id)} strategy={rectSortingStrategy}>
+          <SortableContext items={vpsList.map((v) => v.id)} strategy={rectSortingStrategy}>
             <motion.div
               variants={containerVariants}
               initial="hidden"
               animate="show"
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
             >
-              {vpsList.map(vps => {
+              {vpsList.map((vps) => {
                 const m = metricsMap[vps.id] || { CPUUsage: 0, RAMUsage: 0, NetTx: 0, NetRx: 0 };
                 const isSelected = selectedVps.includes(vps.id);
                 return (
