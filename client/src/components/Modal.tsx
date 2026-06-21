@@ -26,26 +26,33 @@ export function Modal({ isOpen, onClose, title, children, actions, size = 'md' }
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/55 backdrop-blur-sm"
           />
           <motion.div
             ref={ref}
             role="dialog"
             aria-modal="true"
             aria-labelledby="modal-title"
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className={`relative w-full ${SIZE_CLASS[size]} bg-neutral-bg1 border border-border-DEFAULT rounded-2xl shadow-2xl overflow-hidden`}
+            exit={{ opacity: 0, scale: 0.96, y: 12 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className={`relative w-full ${SIZE_CLASS[size]} bg-bg-raised border border-border rounded-xl shadow-raise overflow-hidden`}
           >
-            <div className="flex items-center justify-between p-5 border-b border-border-subtle bg-neutral-bg2/50">
-              <h2 id="modal-title" className="text-lg font-bold text-text-primary">{title}</h2>
-              <button onClick={onClose} className="p-1.5 text-text-muted hover:text-text-primary hover:bg-neutral-bg3 rounded-lg transition-colors" aria-label="Close">
+            <div className="flex items-center justify-between px-5 h-14 border-b border-border-subtle">
+              <h2 id="modal-title" className="text-base font-semibold text-text-primary">
+                {title}
+              </h2>
+              <button
+                onClick={onClose}
+                className="h-8 w-8 inline-flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-bg-elevated rounded-md transition-colors"
+                aria-label="Close dialog"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6">{children}</div>
-            {actions && <div className="flex gap-3 justify-end p-5 pt-0">{actions}</div>}
+            <div className="p-5 text-sm text-text-primary">{children}</div>
+            {actions && <div className="flex gap-2 justify-end px-5 pb-5">{actions}</div>}
           </motion.div>
         </div>
       )}

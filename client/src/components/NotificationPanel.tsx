@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check, X } from 'lucide-react';
+import { Bell, Check } from 'lucide-react';
 import { useSocket } from '@/lib/socket';
 import { api } from '@/lib/api';
 
@@ -10,7 +10,14 @@ const TYPE_COLOR: Record<string, string> = {
   ALERT: 'text-status-warning',
   OFFLINE: 'text-status-error',
   RECOVERY: 'text-status-success',
-  RESTART: 'text-status-info'
+  RESTART: 'text-status-info',
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  ALERT: 'Alert',
+  OFFLINE: 'Offline',
+  RECOVERY: 'Recovered',
+  RESTART: 'Restarted',
 };
 
 export default function NotificationPanel() {
@@ -33,7 +40,7 @@ export default function NotificationPanel() {
   useEffect(() => {
     if (!socket) return;
     const handler = (n: any) => {
-      setItems(prev => [n, ...prev].slice(0, 50));
+      setItems((prev) => [n, ...prev].slice(0, 50));
     };
     socket.on('notification', handler);
     return () => { socket.off('notification', handler); };
@@ -60,12 +67,13 @@ export default function NotificationPanel() {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="p-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-full transition-colors relative"
+        className="h-9 w-9 inline-flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded-md transition-colors relative"
+        aria-label="Notifications"
         title="Notifications"
       >
-        <Bell className="w-5 h-5" />
+        <Bell className="w-4 h-4" />
         {items.length > 0 && (
-          <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-status-error text-white text-[10px] flex items-center justify-center font-bold">
+          <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-status-error text-text-inverse text-[10px] flex items-center justify-center font-medium tabular-nums">
             {items.length > 9 ? '9+' : items.length}
           </span>
         )}
@@ -77,15 +85,21 @@ export default function NotificationPanel() {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="absolute right-0 mt-2 w-96 max-h-[500px] bg-neutral-bg2 border border-border-DEFAULT rounded-2xl shadow-2xl z-50 flex flex-col"
+            transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+            className="absolute right-0 mt-2 w-96 max-h-[500px] bg-bg-raised border border-border rounded-lg shadow-raise z-50 flex flex-col"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle">
-              <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-                <Bell className="w-4 h-4" /> Notifications
+            <div className="flex items-center justify-between px-4 h-12 border-b border-border-subtle">
+              <h3 className="text-sm font-medium text-text-primary flex items-center gap-2">
+                <Bell className="w-4 h-4 text-text-muted" />
+                Notifications
               </h3>
               {items.length > 0 && (
-                <button onClick={markRead} className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1">
-                  <Check className="w-3 h-3" /> Mark all read
+                <button
+                  onClick={markRead}
+                  className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1"
+                >
+                  <Check className="w-3 h-3" />
+                  Mark all read
                 </button>
               )}
             </div>
@@ -93,8 +107,8 @@ export default function NotificationPanel() {
               {loading ? (
                 <div className="p-6 text-center text-text-muted text-sm">Loading…</div>
               ) : items.length === 0 ? (
-                <div className="p-8 text-center text-text-muted text-sm">
-                  <Bell className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <div className="p-10 text-center text-text-muted text-sm">
+                  <Bell className="w-6 h-6 mx-auto mb-2 opacity-40" />
                   No notifications yet.
                 </div>
               ) : (
@@ -102,17 +116,19 @@ export default function NotificationPanel() {
                   <button
                     key={i}
                     onClick={() => { if (n.vpsId) router.push(`/vps/${n.vpsId}`); setOpen(false); }}
-                    className="w-full text-left p-3 border-b border-border-subtle hover:bg-neutral-bg3 transition-colors"
+                    className="w-full text-left px-4 py-3 border-b border-border-subtle last:border-0 hover:bg-bg-elevated transition-colors"
                   >
-                    <div className="flex items-start gap-2">
-                      <span className={`text-[10px] uppercase font-bold tracking-wider mt-0.5 ${TYPE_COLOR[n.type] || 'text-text-muted'}`}>
-                        {n.type}
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[11px] font-medium ${TYPE_COLOR[n.type] || 'text-text-muted'}`}>
+                        {TYPE_LABEL[n.type] || n.type}
                       </span>
-                      <span className="text-[10px] text-text-muted ml-auto whitespace-nowrap">
+                      <span className="text-[11px] text-text-muted ml-auto tabular-nums">
                         {new Date(n.timestamp).toLocaleString()}
                       </span>
                     </div>
-                    <p className="text-sm text-text-primary mt-1 whitespace-pre-wrap break-words">{n.message}</p>
+                    <p className="text-sm text-text-primary mt-1 whitespace-pre-wrap break-words">
+                      {n.message}
+                    </p>
                     {n.vpsName && (
                       <p className="text-xs text-text-muted mt-1">VPS: {n.vpsName}</p>
                     )}
@@ -120,8 +136,11 @@ export default function NotificationPanel() {
                 ))
               )}
             </div>
-            <div className="px-4 py-2 border-t border-border-subtle text-center">
-              <button onClick={() => { router.push('/alerts'); setOpen(false); }} className="text-xs text-brand-light hover:text-brand">
+            <div className="px-4 h-10 border-t border-border-subtle flex items-center justify-center">
+              <button
+                onClick={() => { router.push('/alerts'); setOpen(false); }}
+                className="text-xs text-text-secondary hover:text-text-primary"
+              >
                 View all alerts →
               </button>
             </div>

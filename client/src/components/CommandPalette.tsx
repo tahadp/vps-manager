@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Command } from 'cmdk';
-import { Server, Search, TerminalSquare, ShieldAlert, LayoutDashboard, Settings, X, Bell, Shield } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import { Server, Search, LayoutDashboard, Settings, X, Bell, Shield, ShieldAlert, LogIn } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api, getStoredUser } from '@/lib/api';
 
@@ -22,29 +23,32 @@ export function CommandPalette() {
     } catch {}
   }, []);
 
-  // Toggle the menu when ⌘K is pressed
+  // Toggle on ⌘K / Ctrl-K
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        setOpen((open) => !open);
+        setOpen((o) => !o);
+      } else if (e.key === 'Escape' && open) {
+        setOpen(false);
       }
     };
-
     document.addEventListener('keydown', down);
     return () => document.removeEventListener('keydown', down);
-  }, []);
+  }, [open]);
 
-  // Fetch servers to populate the palette
+  // Fetch VPS list on first open
   useEffect(() => {
     if (open && vpsList.length === 0) {
       if (getStoredUser()) {
         api<any[]>('/api/vps')
-          .then(data => { if (Array.isArray(data)) setVpsList(data); })
+          .then((data) => { if (Array.isArray(data)) setVpsList(data); })
           .catch(() => {});
       }
     }
   }, [open, vpsList.length]);
+
+  const close = () => setOpen(false);
 
   return (
     <AnimatePresence>
@@ -53,100 +57,138 @@ export function CommandPalette() {
           open={open}
           onOpenChange={setOpen}
           label="Command palette"
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
+          overlayClassName="fixed inset-0 z-50 bg-black/55 backdrop-blur-sm"
+          contentClassName="fixed left-1/2 top-[15vh] z-50 w-full max-w-xl -translate-x-1/2 outline-none"
         >
+          {/* Radix requires a DialogTitle for screen readers. cmdk 1.1
+              only sets aria-labelledby, which leaves Radix to warn.
+              Provide a visually hidden title to silence the warning
+              without changing the visible UI. */}
+          <Dialog.Title className="sr-only">Command palette</Dialog.Title>
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.15 }}
-            className="w-full max-w-xl bg-neutral-bg1 border border-border-subtle rounded-2xl shadow-2xl overflow-hidden"
+            initial={{ opacity: 0, scale: 0.96, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -8 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            // bg-bg-raised is the same token used by modals — in dark
+            // theme it is hsl(240 5% 12%), in light theme #ffffff.
+            // Slash opacity on bg-elevated/40 composes correctly with
+            // the CSS variable via color-mix() in both themes.
+            className="overflow-hidden rounded-xl border border-border bg-bg-raised shadow-raise"
           >
-            <div className="flex items-center px-4 py-3 border-b border-border-subtle bg-neutral-bg2/50">
-              <Search className="w-5 h-5 text-text-muted mr-3" />
-              <Command.Input 
-                autoFocus 
-                placeholder="Search servers, settings, or actions..." 
-                className="flex-1 bg-transparent border-none outline-none text-text-primary placeholder:text-text-muted text-sm"
+            <div className="flex items-center gap-3 px-4 border-b border-border-subtle bg-bg-elevated/40">
+              <Search className="w-4 h-4 text-text-muted shrink-0" />
+              <Command.Input
+                autoFocus
+                placeholder="Search servers, settings, or actions…"
+                className="flex-1 bg-transparent border-0 outline-none text-sm text-text-primary placeholder:text-text-muted h-12"
               />
-              <div className="hidden sm:block px-1.5 py-0.5 rounded border border-border-DEFAULT text-[10px] text-text-muted bg-neutral-bg2 ml-3">
+              <kbd className="hidden sm:inline-flex items-center px-1.5 h-5 text-[10px] font-mono text-text-muted border border-border rounded">
                 ESC
-              </div>
-              <button 
-                onClick={() => setOpen(false)}
-                className="p-1 hover:bg-white/10 rounded-lg text-text-muted hover:text-text-primary transition-colors ml-2"
-                aria-label="Close"
+              </kbd>
+              <button
+                onClick={close}
+                className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-elevated rounded transition-colors"
+                aria-label="Close command palette"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <Command.List className="max-h-[300px] overflow-y-auto p-2 scrollbar-thin">
-              <Command.Empty className="py-6 text-center text-sm text-text-muted">
+            <Command.List className="max-h-[340px] overflow-y-auto p-2">
+              <Command.Empty className="py-10 text-center text-sm text-text-muted">
                 No results found.
               </Command.Empty>
 
-              <Command.Group heading={<div className="px-2 py-1.5 text-xs font-semibold text-text-muted uppercase tracking-wider">Servers</div>}>
+              <Command.Group
+                heading={
+                  <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                    Servers
+                  </div>
+                }
+              >
                 {vpsList.map((vps) => (
                   <Command.Item
                     key={vps.id}
+                    value={`${vps.name} ${vps.ipAddress}`}
                     onSelect={() => {
                       router.push(`/vps/${vps.id}`);
                       setOpen(false);
                     }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-brand/10 aria-selected:text-brand-light transition-colors"
+                    className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm text-text-secondary aria-selected:bg-brand-soft aria-selected:text-text-primary data-[selected=true]:bg-brand-soft data-[selected=true]:text-text-primary"
                   >
-                    <div className="w-6 h-6 rounded-md bg-neutral-bg2 border border-border-subtle flex items-center justify-center">
+                    <span className="w-6 h-6 rounded bg-bg-elevated border border-border-subtle flex items-center justify-center shrink-0">
                       <Server className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="font-medium text-text-primary">{vps.name}</span>
-                    <span className="text-xs text-text-muted font-mono ml-auto">{vps.ipAddress}</span>
+                    </span>
+                    <span className="font-medium text-text-primary truncate">{vps.name}</span>
+                    <span className="ml-auto text-[11px] text-text-muted font-mono tabular-nums">
+                      {vps.ipAddress}
+                    </span>
                   </Command.Item>
                 ))}
               </Command.Group>
 
-              <Command.Group heading={<div className="px-2 py-1.5 text-xs font-semibold text-text-muted uppercase tracking-wider mt-2">Navigation</div>}>
-                <Command.Item
-                  onSelect={() => { router.push('/'); setOpen(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
-                >
-                  <LayoutDashboard className="w-4 h-4" /> Dashboard
-                </Command.Item>
-                <Command.Item
-                  onSelect={() => { router.push('/vps'); setOpen(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
-                >
-                  <Server className="w-4 h-4" /> VPS List
-                </Command.Item>
-                <Command.Item
-                  onSelect={() => { router.push('/alerts'); setOpen(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
-                >
-                  <Bell className="w-4 h-4" /> Alerts
-                </Command.Item>
-                <Command.Item
-                  onSelect={() => { router.push('/audit'); setOpen(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
-                >
-                  <ShieldAlert className="w-4 h-4" /> Audit Logs
-                </Command.Item>
-                <Command.Item
-                  onSelect={() => { router.push('/settings'); setOpen(false); }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
-                >
-                  <Settings className="w-4 h-4" /> Settings
-                </Command.Item>
+              <Command.Group
+                heading={
+                  <div className="px-2 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                    Navigation
+                  </div>
+                }
+              >
+                {[
+                  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+                  { label: 'VPS list',  href: '/vps', icon: Server },
+                  { label: 'Alerts',    href: '/alerts', icon: Bell },
+                  { label: 'Audit logs', href: '/audit', icon: ShieldAlert },
+                  { label: 'Settings',  href: '/settings', icon: Settings },
+                ].map(({ label, href, icon: Icon }) => (
+                  <Command.Item
+                    key={href}
+                    value={label}
+                    onSelect={() => { router.push(href); setOpen(false); }}
+                    className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm text-text-secondary aria-selected:bg-brand-soft aria-selected:text-text-primary data-[selected=true]:bg-brand-soft data-[selected=true]:text-text-primary"
+                  >
+                    <Icon className="w-4 h-4" />
+                    {label}
+                  </Command.Item>
+                ))}
+
                 {isAdmin && (
                   <Command.Item
+                    value="Admin"
                     onSelect={() => { router.push('/admin'); setOpen(false); }}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm text-text-secondary aria-selected:bg-neutral-bg3 aria-selected:text-text-primary transition-colors"
+                    className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm text-text-secondary aria-selected:bg-brand-soft aria-selected:text-text-primary data-[selected=true]:bg-brand-soft data-[selected=true]:text-text-primary"
                   >
-                    <Shield className="w-4 h-4" /> Admin
+                    <Shield className="w-4 h-4" />
+                    Admin
                   </Command.Item>
                 )}
-              </Command.Group>
 
+                <Command.Item
+                  value="Sign out"
+                  onSelect={() => { router.push('/login'); setOpen(false); }}
+                  className="flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm text-text-secondary aria-selected:bg-status-error/15 aria-selected:text-status-error data-[selected=true]:bg-status-error/15 data-[selected=true]:text-status-error"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Switch account
+                </Command.Item>
+              </Command.Group>
             </Command.List>
+
+            <div className="flex items-center justify-between px-4 py-2 border-t border-border-subtle text-[11px] text-text-muted">
+              <span>Type a command or search</span>
+              <span className="flex items-center gap-3">
+                <span className="flex items-center gap-1">
+                  <kbd className="font-mono">↑</kbd>
+                  <kbd className="font-mono">↓</kbd>
+                  navigate
+                </span>
+                <span className="flex items-center gap-1">
+                  <kbd className="font-mono">↵</kbd>
+                  select
+                </span>
+              </span>
+            </div>
           </motion.div>
         </Command.Dialog>
       )}
