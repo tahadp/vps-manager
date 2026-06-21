@@ -18,7 +18,7 @@ import RefreshButton from "@/components/vps/RefreshButton";
 import { useSocket } from "@/lib/socket";
 import { api, getStoredUser } from "@/lib/api";
 
-type TabKey = "overview" | "terminal" | "files" | "rustdesk" | "performance";
+type TabKey = "overview" | "terminal" | "files" | "rustdesk" | "performance" | "ip-history";
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes === 0) return '0 B';
@@ -141,7 +141,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
 
   const [vps, setVps] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabKey>("terminal");
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [telemetry, setTelemetry] = useState<any>({});
   const [chartData, setChartData] = useState<any[]>([]);
   const [chartRangeMin, setChartRangeMin] = useState(60);
@@ -256,8 +256,8 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
   }, [id, router, fetchChartData]);
 
   useEffect(() => {
-    if (activeTab === 'overview') {
-      api<{ data?: any[] } | any[]>(`/api/audit?vpsId=${id}&take=50`)
+    if (activeTab === 'overview' || activeTab === 'ip-history') {
+      api<{ data?: any[] } | any[]>(`/api/audit?vpsId=${id}&take=500`)
         .then(d => {
           const rawLogs = (d && (d as any).data) ? (d as any).data : (Array.isArray(d) ? d : []);
           setIpLogs(rawLogs.filter((l: any) => l.action === 'IP_CHANGED'));
@@ -355,6 +355,19 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     router.push('/vps');
   };
 
+  const handleDeleteIpLog = async (logId: string) => {
+    const ok = await showConfirm("Are you sure you want to delete this IP history record?");
+    if (!ok) return;
+    try {
+      await api(`/api/audit/${logId}`, { method: 'DELETE' });
+      setIpLogs(prev => prev.filter((log: any) => log.id !== logId));
+      setCmdResult({ type: 'success', message: 'IP address history record deleted successfully.' });
+    } catch (err: any) {
+      setCmdResult({ type: 'error', message: `Failed to delete record: ${err?.message || "Unknown error"}` });
+    }
+    setTimeout(() => setCmdResult(null), 4000);
+  };
+
   if (loading) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-text-muted">
@@ -382,6 +395,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
     { key: "files", label: "File Manager", icon: FolderOpen },
     { key: "rustdesk", label: "Remote Desktop", icon: MonitorPlay },
     { key: "performance", label: "Performance", icon: LineChartIcon },
+    { key: "ip-history", label: "IP History", icon: History },
   ];
 
   return (
@@ -429,6 +443,9 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
         </div>
         <div className="flex items-center gap-2">
           <RefreshButton vpsId={id} disabled={isOffline} onResult={(ok, msg) => setCmdResult({ type: ok ? 'success' : 'error', message: msg })} />
+          <button onClick={() => router.push(`/vps/${id}/settings`)} className="flex items-center gap-1.5 px-3 py-2 text-xs bg-neutral-bg2 hover:bg-neutral-bg3 text-text-primary rounded-xl border border-border-subtle transition-colors">
+            <SettingsIcon className="w-3.5 h-3.5" /> Settings
+          </button>
           {isAdmin && (
             <button onClick={handleDeleteVps} className="flex items-center gap-1.5 px-3 py-2 text-xs bg-status-error/10 hover:bg-status-error/20 text-status-error rounded-xl border border-status-error/20 transition-colors">
               <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -449,9 +466,6 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                     exit={{ opacity: 0, y: -4 }}
                     className="absolute right-0 mt-2 w-56 bg-neutral-bg2 border border-border-DEFAULT rounded-xl shadow-xl z-50 py-1"
                   >
-                    <button onClick={() => { router.push(`/vps/${id}/settings`); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-neutral-bg3 transition-colors">
-                      <SettingsIcon className="w-4 h-4" /> VPS Settings
-                    </button>
                     <button onClick={() => { router.push(`/vps/${id}/alerts`); setMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-primary hover:bg-neutral-bg3 transition-colors">
                       <Bell className="w-4 h-4" /> Alert Rules
                     </button>
@@ -591,35 +605,6 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                   </div>
                 </div>
 
-                <div className="bg-neutral-bg2/60 border border-border-subtle rounded-xl p-4 flex flex-col min-h-[180px]">
-                  <h3 className="text-xs font-bold tracking-wider uppercase text-text-muted mb-3 flex items-center gap-2">
-                    <Network className="w-3.5 h-3.5 text-dataviz-blue" /> IP Address History
-                  </h3>
-                  <div className="flex-1 overflow-y-auto space-y-2 max-h-[140px] pr-1 custom-scrollbar">
-                    {ipLogs.length === 0 ? (
-                      <div className="text-text-muted text-xs text-center py-6">
-                        No IP address changes logged yet.
-                      </div>
-                    ) : (
-                      ipLogs.slice(0, 5).map((log: any) => {
-                        const parts = log.target.split(' - ');
-                        const desc = parts[1] || log.target;
-                        const cleanDesc = desc.replace("IP address changed ", "");
-                        return (
-                          <div key={log.id} className="flex justify-between items-center gap-3 border-b border-border-subtle/30 pb-2 last:border-0 last:pb-0">
-                            <span className="text-text-primary text-xs font-mono font-medium truncate" title={desc}>
-                              {cleanDesc}
-                            </span>
-                            <span className="text-text-muted text-[10px] whitespace-nowrap">
-                              {new Date(log.createdAt).toLocaleString()}
-                            </span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
               </div>
             </div>
           )}
@@ -627,7 +612,7 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
           {/* Terminal - always mounted when online to keep session alive */}
           {!isOffline && (
             <div style={{ display: activeTab === 'terminal' ? 'block' : 'none' }} className="p-4 h-[min(750px,70vh)]">
-              <WebPTY vpsId={id} />
+              <WebPTY vpsId={id} active={activeTab === 'terminal'} />
             </div>
           )}
           {activeTab === 'terminal' && isOffline && (
@@ -696,6 +681,53 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'ip-history' && (
+            <div className="p-6 flex flex-col">
+              <div className="flex items-center justify-between mb-4 border-b border-border-subtle pb-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-text-primary">IP Address History</h2>
+                  <p className="text-text-muted text-xs mt-1">Full change log of IP addresses assigned to this VPS.</p>
+                </div>
+              </div>
+              
+              <div>
+                {ipLogs.length === 0 ? (
+                  <div className="text-text-muted text-sm text-center py-12 flex flex-col items-center justify-center">
+                    <History className="w-12 h-12 mb-3 opacity-20" />
+                    No IP address changes logged yet.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border-subtle/40 border border-border-subtle rounded-xl overflow-hidden bg-neutral-bg2/40">
+                    {ipLogs.map((log: any) => {
+                      const parts = log.target.split(' - ');
+                      const desc = parts[1] || log.target;
+                      const cleanDesc = desc.replace("IP address changed ", "");
+                      return (
+                        <div key={log.id} className="flex justify-between items-center gap-4 px-4 py-3.5 hover:bg-neutral-bg3/30 transition-colors">
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <span className="text-text-primary text-sm font-mono font-medium truncate" title={desc}>
+                              {cleanDesc}
+                            </span>
+                            <span className="text-text-muted text-xs">
+                              {new Date(log.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleDeleteIpLog(log.id)}
+                            className="p-2 text-status-error/70 hover:text-status-error hover:bg-status-error/10 rounded-xl transition-colors border border-transparent hover:border-status-error/20"
+                            title="Delete this record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

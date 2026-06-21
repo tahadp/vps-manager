@@ -5,11 +5,12 @@ import { useSocket } from '@/lib/socket';
 interface WebPTYProps {
   vpsId: string;
   className?: string;
+  active?: boolean;
 }
 
 type ConnState = 'idle' | 'connecting' | 'connected' | 'closed';
 
-export default function WebPTY({ vpsId, className }: WebPTYProps) {
+export default function WebPTY({ vpsId, className, active }: WebPTYProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<any>(null);
   const fitRef = useRef<any>(null);
@@ -21,6 +22,16 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
   const [searchText, setSearchText] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { socket, connectionStatus } = useSocket();
+
+  // Focus terminal when tab becomes active
+  useEffect(() => {
+    if (active && termRef.current) {
+      const timer = setTimeout(() => {
+        termRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [active]);
 
   // Focus search input when opened
   useEffect(() => {
@@ -153,6 +164,40 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
       xterm.open(terminalRef.current);
       termRef.current = xterm;
       fitRef.current = fitAddon;
+
+      // Prevent default browser shortcuts or behavior for typical terminal control keys
+      xterm.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+        const controlKeys = [
+          'Tab',
+          'Backspace',
+          'ArrowUp',
+          'ArrowDown',
+          'ArrowLeft',
+          'ArrowRight',
+          'PageUp',
+          'PageDown',
+          'Home',
+          'End',
+          'Insert',
+          'Delete'
+        ];
+
+        const isCtrlKey = e.ctrlKey && !e.shiftKey && !e.altKey;
+        const isTerminalShortcut = isCtrlKey && ['c', 'd', 'z', 'r', 'l', 'a', 'e', 'w', 'u', 'k'].includes(e.key.toLowerCase());
+
+        if (controlKeys.includes(e.key) || isTerminalShortcut) {
+          e.preventDefault();
+          e.stopPropagation();
+          return true; // Let xterm handle it internally
+        }
+
+        // For copy-paste shortcuts (Ctrl+Shift+C / Ctrl+Shift+V / Ctrl+Shift+F), pass to global handler
+        if (e.ctrlKey && e.shiftKey && ['C', 'V', 'F', 'c', 'v', 'f'].includes(e.key)) {
+          return false;
+        }
+
+        return true;
+      });
 
       // Initial fit with delay for DOM to settle
       const fitTerminal = () => {
@@ -319,7 +364,14 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
   }, [socket, searchOpen, closeSearch]);
 
   return (
-    <div className="w-full h-full relative flex flex-col">
+    <div 
+      className="w-full h-full relative flex flex-col"
+      onClick={() => {
+        if (termRef.current) {
+          termRef.current.focus();
+        }
+      }}
+    >
       {/* Status bar */}
       <div className="flex-shrink-0 px-3 py-1.5 text-[10px] uppercase font-bold tracking-wider bg-neutral-bg2 border-b border-border-subtle z-10 flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${
@@ -336,7 +388,10 @@ export default function WebPTY({ vpsId, className }: WebPTYProps) {
 
       {/* Search bar */}
       {searchOpen && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-neutral-bg2 border-b border-border-subtle z-20">
+        <div 
+          className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-neutral-bg2 border-b border-border-subtle z-20"
+          onClick={(e) => e.stopPropagation()}
+        >
           <input
             ref={searchInputRef}
             type="text"
