@@ -17,6 +17,7 @@ import ScreenView from "@/components/ScreenView";
 import RefreshButton from "@/components/vps/RefreshButton";
 import { useSocket } from "@/lib/socket";
 import { api, getStoredUser } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 type TabKey = "overview" | "terminal" | "files" | "rustdesk" | "performance" | "ip-history";
 
@@ -609,9 +610,15 @@ export default function VpsDetail({ params }: { params: Promise<{ id: string }> 
             </div>
           )}
 
-          {/* Terminal - always mounted when online to keep session alive */}
+          {/* Terminal — always mounted when online so the PTY session
+              survives tab switches. The WebPTY's internal state machine
+              drives connection/reconnect; the page just renders the
+              chrome around it. */}
           {!isOffline && (
-            <div style={{ display: activeTab === 'terminal' ? 'block' : 'none' }} className="p-4 h-[min(750px,70vh)]">
+            <div className={cn(
+              'h-[min(750px,70vh)] p-4',
+              activeTab === 'terminal' ? 'block' : 'hidden',
+            )}>
               <WebPTY vpsId={id} active={activeTab === 'terminal'} />
             </div>
           )}
