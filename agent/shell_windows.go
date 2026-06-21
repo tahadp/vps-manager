@@ -4,7 +4,9 @@ package main
 
 import (
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -15,9 +17,23 @@ type shellSession struct {
 	reader io.ReadCloser
 }
 
+// defaultShellDir returns the user's Desktop directory if it exists,
+// otherwise the user's home directory, otherwise "C:\\".
+func defaultShellDir() string {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		desktop := filepath.Join(home, "Desktop")
+		if info, statErr := os.Stat(desktop); statErr == nil && info.IsDir() {
+			return desktop
+		}
+		return home
+	}
+	return "C:\\"
+}
+
 func startShell(shell string) (*shellSession, error) {
 	cmd := exec.Command(shell)
-	cmd.Dir = "C:\\"
+	cmd.Dir = defaultShellDir()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

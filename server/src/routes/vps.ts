@@ -234,6 +234,21 @@ vpsRouter.delete('/:id', requireAuth, validateParams(idParamSchema), async (req:
   }
 });
 
+// Translate high-level commands to OS-specific commands
+export function translateCommand(command: string, osType: string): string {
+  const cmd = command.toLowerCase().trim();
+  
+  if (cmd === 'stop' || cmd === 'shutdown' || cmd === 'poweroff') {
+    return osType === 'WINDOWS' ? 'shutdown /s /t 0' : 'shutdown -h now';
+  }
+  if (cmd === 'restart' || cmd === 'reboot') {
+    return osType === 'WINDOWS' ? 'shutdown /r /t 0' : 'shutdown -r now';
+  }
+  
+  // For other commands, pass through as-is
+  return command;
+}
+
 // Single command execution
 vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), validate(schemas.executeCommand), async (req: AuthRequest, res: any) => {
   const vpsId = req.params.id as string;
@@ -241,8 +256,15 @@ vpsRouter.post('/:id/command', requireAuth, validateParams(idParamSchema), valid
   if (!await checkVpsAccess(vpsId, req.user)) return res.status(403).json({ error: 'Unauthorized' });
 
   try {
-    const result = await execOnAgent(vpsId, command);
-    await logAudit({ userId: req.user!.id, action: 'EXECUTE_COMMAND', target: vpsId, details: `Executed: ${command}` });
+    // Get VPS OS type for command translation
+    const vps = await prisma.vps.findUnique({ where: { id: vpsId }, select: { os: true } });
+    const osType = vps?.os || 'LINUX';
+    
+    // Translate high-level commands to OS-specific commands
+    const translatedCommand = translateCommand(command, osType);
+    
+    const result = await execOnAgent(vpsId, translatedCommand);
+    await logAudit({ userId: req.user!.id, action: 'EXECUTE_COMMAND', target: vpsId, details: `Executed: ${command} (${translatedCommand})` });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -384,8 +406,15 @@ vpsRouter.post('/bulk/command', requireAuth, validate(schemas.bulkCommand), asyn
       continue;
     }
     try {
-      const resData = await execOnAgent(vpsId, command);
-      await logAudit({ userId: req.user!.id, action: 'EXECUTE_COMMAND', target: vpsId, details: `Bulk Executed: ${command}` });
+      // Get VPS OS type for command translation
+      const vps = await prisma.vps.findUnique({ where: { id: vpsId }, select: { os: true } });
+      const osType = vps?.os || 'LINUX';
+      
+      // Translate high-level commands to OS-specific commands
+      const translatedCommand = translateCommand(command, osType);
+      
+      const resData = await execOnAgent(vpsId, translatedCommand);
+      await logAudit({ userId: req.user!.id, action: 'EXECUTE_COMMAND', target: vpsId, details: `Bulk Executed: ${command} (${translatedCommand})` });
       results.push({ vpsId, success: true, data: resData });
     } catch (err: any) {
       results.push({ vpsId, success: false, error: err.message });

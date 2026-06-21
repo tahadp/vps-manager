@@ -323,6 +323,17 @@ func toLocalPath(p string) string {
 	if runtime.GOOS != "windows" {
 		return p
 	}
+	// Resolve ~ to user home directory
+	if p == "~" || p == "~/" || p == "/~" || p == "/~/" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, filepath.FromSlash(p[2:]))
+		}
+	}
 	if p == "" || p == "/" {
 		return "C:\\"
 	}
@@ -335,6 +346,21 @@ func toLocalPath(p string) string {
 		return string(p[1]) + ":\\"
 	}
 	return "C:" + filepath.FromSlash(p)
+}
+
+// translateForWindows converts high-level or Linux-style commands to
+// their Windows equivalents. This is a defense-in-depth layer on the
+// agent side so that even if the server sends a raw "stop" or a Linux
+// "shutdown -h now", the Windows agent can execute it correctly.
+func translateForWindows(command string) string {
+	lower := strings.TrimSpace(strings.ToLower(command))
+	switch lower {
+	case "stop", "shutdown", "poweroff", "shutdown -h now", "shutdown -h":
+		return "shutdown /s /t 0"
+	case "restart", "reboot", "shutdown -r now", "shutdown -r":
+		return "shutdown /r /t 0"
+	}
+	return command
 }
 
 func newProgram() *program {
@@ -755,7 +781,8 @@ func (p *program) handleExec(stream pb.BackendService_StreamAgentIOClient, reque
     defer cancel()
     var cmd *exec.Cmd
     if runtime.GOOS == "windows" {
-        cmd = exec.CommandContext(ctx, "cmd", "/C", req.Command)
+        translated := translateForWindows(req.Command)
+        cmd = exec.CommandContext(ctx, "cmd", "/C", translated)
     } else {
         cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
     }

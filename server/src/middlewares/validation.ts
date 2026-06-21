@@ -113,10 +113,11 @@ const passwordComplexity = z.string()
   .refine((v: string) => /[0-9]/.test(v), 'Password must contain a digit');
 
 // Absolute path validator: blocks shell metacharacters, traversal, and sensitive dirs
+// Also allows ~ prefix for home-directory-relative paths (resolved agent-side).
 export const safeFilePathSchema = z.string()
   .min(1)
   .max(1000)
-  .regex(/^\/[a-zA-Z0-9_./\- $()]*$/, 'Path contains illegal characters')
+  .regex(/^(\/|~)[a-zA-Z0-9_./\- $()]*$/, 'Path contains illegal characters')
   .refine((p: string) => !p.includes('..'), 'Path traversal detected')
   .refine((p: string) => {
     const normalized = path.posix.normalize(p);

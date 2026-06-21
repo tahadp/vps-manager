@@ -44,7 +44,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default function FileManager({ vpsId, className }: FileManagerProps) {
-  const [currentPath, setCurrentPath] = useState('/root');
+  const [currentPath, setCurrentPath] = useState('~/Desktop');
   const [files, setFiles] = useState<any[]>([]);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState('');
