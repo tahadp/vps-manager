@@ -6,18 +6,20 @@ import { AppShell } from "../components/layout/AppShell";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 
 const geistSans = Geist({
-  variable: "--font-geist-sans",
+  variable: "--font-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
 const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+  variable: "--font-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "VPS Manager",
-  description: "Modern VPS Management Dashboard",
+  description: "Control plane for your virtual private server fleet",
 };
 
 export default function RootLayout({
@@ -29,20 +31,25 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <head>
+        {/*
+          Pre-paint theme application: prevents the white-flash on first
+          load when the user's preference is dark. The CSS class names
+          match what next-themes uses with attribute="class".
+        */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.classList.add(t);document.documentElement.style.colorScheme=t}else{var d=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.classList.add(d);document.documentElement.style.colorScheme=d}localStorage.removeItem('token')}catch(e){}})()`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');var c=t==='light'||t==='dark'?t:window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=c;document.documentElement.style.colorScheme=c}catch(e){}})()`,
           }}
         />
       </head>
-      <body className="min-h-full">
+      <body className="min-h-screen antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
-          enableSystem={true}
+          enableSystem
           disableTransitionOnChange
         >
           <AppShell>

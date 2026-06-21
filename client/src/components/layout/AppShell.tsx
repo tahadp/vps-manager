@@ -48,7 +48,7 @@ export function AppShell({ children }: AppShellProps) {
   }, [pathname]);
 
   const content = (
-    <div className="flex h-screen w-full bg-neutral-bg1 overflow-hidden">
+    <div className="flex h-screen w-full bg-bg-base overflow-hidden">
       <div className="hidden lg:block">
         <Sidebar />
       </div>
@@ -61,22 +61,23 @@ export function AppShell({ children }: AppShellProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+              className="fixed inset-0 z-40 bg-black/55 backdrop-blur-sm lg:hidden"
             />
             <motion.div
               initial={{ x: -280 }}
               animate={{ x: 0 }}
               exit={{ x: -280 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 32 }}
               className="fixed inset-y-0 left-0 z-50 lg:hidden"
             >
               <div className="relative">
                 <Sidebar />
                 <button
                   onClick={() => setSidebarOpen(false)}
-                  className="absolute top-4 right-[-48px] p-2 bg-neutral-bg2/80 border border-border-subtle rounded-lg text-text-secondary hover:text-text-primary transition-colors"
+                  className="absolute top-3 right-[-44px] h-9 w-9 inline-flex items-center justify-center bg-bg-raised border border-border rounded-md text-text-secondary hover:text-text-primary transition-colors"
+                  aria-label="Close sidebar"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </motion.div>
@@ -85,24 +86,25 @@ export function AppShell({ children }: AppShellProps) {
       </AnimatePresence>
 
       <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden relative">
-        <div className="flex items-center lg:hidden">
+        <div className="flex items-center lg:hidden h-16 px-3 border-b border-border-subtle">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 ml-2 text-text-secondary hover:text-text-primary hover:bg-white/5 rounded-lg transition-colors"
+            className="h-9 w-9 inline-flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-elevated rounded-md transition-colors"
+            aria-label="Open sidebar"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-4 h-4" />
           </button>
         </div>
 
         <Topbar />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-6 relative">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 relative">
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
               className="h-full"
             >
               {children}
@@ -120,8 +122,8 @@ export function AppShell({ children }: AppShellProps) {
 
   if (authenticated === null) {
     return (
-      <div className="h-full flex items-center justify-center text-text-muted">
-        <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+      <div className="h-full flex items-center justify-center bg-bg-base text-text-muted">
+        <div className="h-6 w-6 border-2 border-brand border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
