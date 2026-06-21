@@ -3,101 +3,69 @@
 package main
 
 import (
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"fmt"
 	"time"
+
+	gopty "github.com/aymanbagabas/go-pty"
 )
 
+// shellSession is a thin wrapper around a Pty that carries the
+// server-assigned session id. The Pty does all real I/O work; this
+// type exists so daemon.go can identify sessions in p.shells and so
+// future per-session state (e.g. escape sequence sanitizer) has a
+// home.
+//
+// cmd is exposed for daemon.go's cleanup path
+// (cleanupShell: sess.cmd.Process.Kill(); sess.cmd.Process.Wait()).
+// It is the aymanbagabas/go-pty *Cmd; Process *os.Process is the
+// same field exposed by stdlib *exec.Cmd, so the cleanup call site
+// is unchanged.
 type shellSession struct {
-	id     string
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	reader io.ReadCloser
-}
-
-// defaultShellDir returns the user's Desktop directory if it exists,
-// otherwise the user's home directory, otherwise "C:\\".
-func defaultShellDir() string {
-	home, err := os.UserHomeDir()
-	if err == nil {
-		desktop := filepath.Join(home, "Desktop")
-		if info, statErr := os.Stat(desktop); statErr == nil && info.IsDir() {
-			return desktop
-		}
-		return home
-	}
-	return "C:\\"
+	id  string
+	pty Pty
+	cmd *gopty.Cmd
 }
 
 func startShell(shell string) (*shellSession, error) {
-	cmd := exec.Command(shell)
-	cmd.Dir = defaultShellDir()
-	stdin, err := cmd.StdinPipe()
+	if Start == nil {
+		return nil, fmt.Errorf("pty: Start factory not initialized (unsupported platform?)")
+	}
+	p, err := Start(Options{Command: shell})
 	if err != nil {
 		return nil, err
 	}
-
-	pr, pw := io.Pipe()
-	cmd.Stdout = pw
-	cmd.Stderr = pw
-
-	if err := cmd.Start(); err != nil {
-		stdin.Close()
-		pw.Close()
-		pr.Close()
-		return nil, err
+	var cmd *gopty.Cmd
+	if c, ok := p.(interface{ Cmd() *gopty.Cmd }); ok {
+		cmd = c.Cmd()
 	}
-
-	go func() {
-		_ = cmd.Wait()
-		_ = pw.Close()
-	}()
-
-	return &shellSession{
-		cmd:    cmd,
-		stdin:  stdin,
-		reader: pr,
-	}, nil
+	return &shellSession{pty: p, cmd: cmd}, nil
 }
 
 func (s *shellSession) Write(data []byte) (int, error) {
-	var parsed []byte
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\r' {
-			if i+1 < len(data) && data[i+1] == '\n' {
-				parsed = append(parsed, '\r', '\n')
-				i++
-			} else {
-				parsed = append(parsed, '\r', '\n')
-			}
-		} else {
-			parsed = append(parsed, data[i])
-		}
-	}
-	return s.stdin.Write(parsed)
+	return s.pty.Write(data)
 }
 
 func (s *shellSession) Read(buf []byte) (int, error) {
-	return s.reader.Read(buf)
+	return s.pty.Read(buf)
 }
 
-// SetReadDeadline is a no-op on Windows because the pipe-backed reader
-// does not support deadlines. Shutdown unblocks Read via Close()
-// instead. Returning nil keeps the pump loop's error-handling uniform
-// across platforms; returning a non-nil error would falsely signal
-// an I/O failure.
-func (s *shellSession) SetReadDeadline(time.Time) error {
-	return nil
+// SetReadDeadline forwards to the ConPTY output pipe, which is a
+// standard *os.File from os.Pipe and therefore supports
+// SetReadDeadline natively. The inner Read pump uses this to bound
+// how long it will block on a quiet shell so a shutdown signal
+// cannot be starved by a silent process.
+func (s *shellSession) SetReadDeadline(t time.Time) error {
+	return s.pty.SetReadDeadline(t)
+}
+
+// SetSize resizes the underlying ConPTY. cols/rows are character
+// cell dimensions. The server forwards resize events from the
+// xterm.js frontend so a window resize re-flows the slave's idea
+// of the terminal geometry (line wraps, status bar width, etc).
+func (s *shellSession) SetSize(cols, rows int) error {
+	return s.pty.SetSize(cols, rows)
 }
 
 func (s *shellSession) Close() error {
-	if s.stdin != nil {
-		_ = s.stdin.Close()
-	}
-	if s.reader != nil {
-		_ = s.reader.Close()
-	}
-	return nil
+	return s.pty.Close()
 }

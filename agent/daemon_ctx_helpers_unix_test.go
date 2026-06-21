@@ -3,39 +3,43 @@
 package main
 
 import (
-	"os/exec"
 	"testing"
 
-	"github.com/creack/pty"
+	gopty "github.com/aymanbagabas/go-pty"
 )
 
 // deadlineAware is true on POSIX because the PTY reader respects
 // SetReadDeadline; the deadline-exit test is meaningful here.
 const deadlineAware = true
 
-// newDeadlineBoundSessionPlatform returns a real shellSession backed by
-// a PTY whose Read will block until SetReadDeadline fires (or the PTY
-// is closed). We use pty.Start against `sleep 60` so no output is
-// produced and Read blocks indefinitely until deadline.
+// newDeadlineBoundSessionPlatform returns a real shellSession backed
+// by a PTY whose Read will block until SetReadDeadline fires (or the
+// PTY is closed). We launch `sleep 60` via the production Start
+// factory so no output is produced and Read blocks indefinitely
+// until deadline.
 func newDeadlineBoundSessionPlatform(t *testing.T) *shellSession {
 	t.Helper()
 
-	cmd := exec.Command("sleep", "60")
-	ptmx, err := pty.Start(cmd)
+	pt, err := Start(Options{Command: "sleep", Args: []string{"60"}})
 	if err != nil {
-		t.Skipf("pty.Start unavailable in this environment: %v", err)
+		t.Skipf("Start unavailable in this environment: %v", err)
 	}
+	var cmd *gopty.Cmd
+	if c, ok := pt.(interface{ Cmd() *gopty.Cmd }); ok {
+		cmd = c.Cmd()
+	}
+
 	t.Cleanup(func() {
-		_ = ptmx.Close()
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-			_, _ = cmd.Process.Wait()
-		}
+		// pt.Close reaps the slave (Kill + inline Wait). Calling
+		// cmd.Process.Wait() again would fail with "process already
+		// waited on" so we deliberately do not double-reap here.
+		_ = pt.Close()
 	})
 
-	return &shellSession{
-		id:   "deadline-test",
-		ptmx: ptmx,
-		cmd:  cmd,
+	// Touch cmd once so a future refactor that drops it trips the
+	// test compile rather than silently passing.
+	if cmd == nil {
+		t.Fatalf("newDeadlineBoundSessionPlatform: expected cmd from Start")
 	}
+	return &shellSession{pty: pt, cmd: cmd}
 }
