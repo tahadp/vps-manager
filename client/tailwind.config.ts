@@ -1,5 +1,13 @@
 import type { Config } from "tailwindcss";
 
+/**
+ * Tailwind v4 config — used by `@config` directive in globals.css
+ * to extend the v4 zero-config defaults with our design tokens.
+ *
+ * Token values live as CSS custom properties in globals.css so that
+ * [data-theme="light"] overrides can swap them. The Tailwind config
+ * only references the variable names — never inline hex codes.
+ */
 const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,92 +17,121 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Segoe UI', 'system-ui', 'sans-serif'],
+        // Primary: Geist (loaded via next/font in layout.tsx, exposed as
+        // --font-sans CSS var). Fallback chain is what the body uses
+        // before the font is ready.
+        sans: ['var(--font-sans)', 'Segoe UI', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'Cascadia Code', 'monospace'],
       },
+
       colors: {
+        // Canonical token names — use these in new code.
         brand: {
-          DEFAULT: 'var(--color-brand, #8251EE)',
-          hover: 'var(--color-brand-hover, #9366F5)',
-          light: 'var(--color-brand-light, #A37EF5)',
-          subtle: 'var(--color-brand-subtle, rgba(130, 81, 238, 0.15))',
+          DEFAULT: 'var(--brand)',
+          hover:   'var(--brand-hover)',
+          soft:    'var(--brand-soft)',
         },
-        neutral: {
-          bg1: 'var(--color-bg-1, hsl(240, 6%, 10%))',
-          bg2: 'var(--color-bg-2, hsl(240, 5%, 12%))',
-          bg3: 'var(--color-bg-3, hsl(240, 5%, 14%))',
-          bg4: 'var(--color-bg-4, hsl(240, 4%, 18%))',
-          bg5: 'var(--color-bg-5, hsl(240, 4%, 22%))',
-          bg6: 'var(--color-bg-6, hsl(240, 4%, 26%))',
+        bg: {
+          base:     'var(--bg-base)',
+          raised:   'var(--bg-raised)',
+          sunken:   'var(--bg-sunken)',
+          elevated: 'var(--bg-elevated)',
+          overlay:  'var(--bg-overlay)',
+          strong:   'var(--bg-strong)',
         },
         text: {
-          primary: 'var(--color-text-primary, #FFFFFF)',
-          secondary: 'var(--color-text-secondary, #A1A1AA)',
-          muted: 'var(--color-text-muted, #71717A)',
+          primary:   'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted:     'var(--text-muted)',
+          inverse:   'var(--text-inverse)',
         },
         border: {
-          subtle: 'var(--color-border-subtle, hsla(0, 0%, 100%, 0.08))',
-          DEFAULT: 'var(--color-border-default, hsla(0, 0%, 100%, 0.12))',
-          strong: 'var(--color-border-strong, hsla(0, 0%, 100%, 0.20))',
+          subtle:  'var(--border-subtle)',
+          DEFAULT: 'var(--border-default)',
+          strong:  'var(--border-strong)',
         },
         status: {
-          success: '#10B981',
-          warning: '#F59E0B',
-          error: '#EF4444',
-          info: '#3B82F6',
+          success: 'var(--status-success)',
+          warning: 'var(--status-warning)',
+          error:   'var(--status-error)',
+          info:    'var(--status-info)',
         },
+
+        // Legacy aliases — kept so existing files (`bg-neutral-bg1` etc.)
+        // still resolve to the right token. New code should use the
+        // canonical `bg-*` / `text-*` / `border-*` names above.
+        neutral: {
+          bg1: 'var(--bg-base)',
+          bg2: 'var(--bg-raised)',
+          bg3: 'var(--bg-elevated)',
+          bg4: 'var(--bg-overlay)',
+          bg5: 'var(--bg-strong)',
+          bg6: 'var(--bg-strong)',
+        },
+        // Old brand names → new tokens
+        'brand-legacy': 'var(--brand)',
+        'brand-light':  'var(--brand-hover)',
+
+        // Dataviz palette (charts) — used by recharts on the dashboard.
+        // These are intentionally stable across themes.
         dataviz: {
-          purple: '#8251EE',
-          blue: '#3B82F6',
-          green: '#10B981',
+          purple: '#7C3AED',
+          blue:   '#3B82F6',
+          green:  '#10B981',
           yellow: '#F59E0B',
-          red: '#EF4444',
-          pink: '#EC4899',
-          cyan: '#06B6D4',
+          red:    '#EF4444',
+          pink:   '#EC4899',
+          cyan:   '#06B6D4',
         },
       },
+
       borderRadius: {
-        DEFAULT: '0.5rem',
-        lg: '0.75rem',
-        xl: '1rem',
+        sm:   'var(--radius-sm)',
+        md:   'var(--radius-md)',
+        lg:   'var(--radius-lg)',
+        xl:   'var(--radius-xl)',
+        DEFAULT: 'var(--radius-md)',
       },
+
       boxShadow: {
-        glow: '0 0 20px rgba(130, 81, 238, 0.3)',
-        'glow-lg': '0 0 40px rgba(130, 81, 238, 0.4)',
+        soft:  'var(--shadow-soft)',
+        raise: 'var(--shadow-raise)',
+        glow:  'var(--shadow-glow)',
       },
-      backdropBlur: {
-        xs: '2px',
+
+      transitionDuration: {
+        fast: '120ms',
+        base: '200ms',
+        slow: '280ms',
       },
+      transitionTimingFunction: {
+        'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
+        'in-expo':  'cubic-bezier(0.7, 0, 0.84, 0)',
+      },
+
       animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'slide-down': 'slideDown 0.3s ease-out',
+        'fade-in':     'fadeIn 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-up':    'slideUp 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'slide-down':  'slideDown 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'pulse-slow':  'pulse 3s ease-in-out infinite',
+        'shimmer':     'shimmer 1.6s linear infinite',
       },
+
       keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        slideDown: {
-          '0%': { opacity: '0', transform: 'translateY(-10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
+        fadeIn:    { '0%': { opacity: '0' },     '100%': { opacity: '1' } },
+        slideUp:   { '0%': { opacity: '0', transform: 'translateY(8px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        slideDown: { '0%': { opacity: '0', transform: 'translateY(-8px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+        shimmer:   { '0%': { backgroundPosition: '-200% 0' }, '100%': { backgroundPosition: '200% 0' } },
       },
+
       spacing: {
-        'safe-top': 'env(safe-area-inset-top)',
+        'safe-top':    'env(safe-area-inset-top)',
         'safe-bottom': 'env(safe-area-inset-bottom)',
-        'safe-left': 'env(safe-area-inset-left)',
-        'safe-right': 'env(safe-area-inset-right)',
+        'safe-left':   'env(safe-area-inset-left)',
+        'safe-right':  'env(safe-area-inset-right)',
       },
-      minHeight: {
-        'touch': '44px',
-      },
-      minWidth: {
-        'touch': '44px',
-      },
+      minHeight: { 'touch': '44px' },
+      minWidth:  { 'touch': '44px' },
     },
   },
   plugins: [],
